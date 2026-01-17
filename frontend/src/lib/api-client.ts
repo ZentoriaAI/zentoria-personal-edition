@@ -24,25 +24,29 @@ import type {
 // ============================
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://10.10.40.101:4000';
+const DEFAULT_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 class ApiClient {
   private client: AxiosInstance;
   private apiKey: string | null = null;
 
   constructor() {
+    // Auto-initialize with API key from environment
+    this.apiKey = DEFAULT_API_KEY || null;
+
     this.client = axios.create({
-      baseURL: `${API_URL}/api`,
+      baseURL: `${API_URL}/api/v1`,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    // Request interceptor
+    // Request interceptor - use X-API-Key header for API key authentication
     this.client.interceptors.request.use(
       (config) => {
         if (this.apiKey) {
-          config.headers.Authorization = `Bearer ${this.apiKey}`;
+          config.headers['X-API-Key'] = this.apiKey;
         }
         return config;
       },
@@ -83,34 +87,74 @@ class ApiClient {
   }
 
   // ============================
-  // Chat Endpoints
+  // Chat Endpoints (using MCP command endpoint)
   // ============================
 
+  // Local storage for conversations (since backend doesn't have conversation management)
+  private getLocalConversations(): Conversation[] {
+    if (typeof window === 'undefined') return [];
+    const stored = localStorage.getItem('zentoria_conversations');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  private saveLocalConversations(conversations: Conversation[]): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('zentoria_conversations', JSON.stringify(conversations));
+  }
+
+  private getLocalMessages(conversationId: string): ChatMessage[] {
+    if (typeof window === 'undefined') return [];
+    const stored = localStorage.getItem(`zentoria_messages_${conversationId}`);
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  private saveLocalMessages(conversationId: string, messages: ChatMessage[]): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(`zentoria_messages_${conversationId}`, JSON.stringify(messages));
+  }
+
   async getConversations(page = 1, pageSize = 20): Promise<PaginatedResponse<Conversation>> {
-    const { data } = await this.client.get<ApiResponse<PaginatedResponse<Conversation>>>(
-      '/chat/conversations',
-      { params: { page, pageSize } }
-    );
-    return data.data!;
+    const conversations = this.getLocalConversations();
+    const start = (page - 1) * pageSize;
+    const items = conversations.slice(start, start + pageSize);
+    return {
+      items,
+      total: conversations.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(conversations.length / pageSize),
+    };
   }
 
   async getConversation(id: string): Promise<Conversation> {
-    const { data } = await this.client.get<ApiResponse<Conversation>>(
-      `/chat/conversations/${id}`
-    );
-    return data.data!;
+    const conversations = this.getLocalConversations();
+    const conv = conversations.find(c => c.id === id);
+    if (!conv) throw new Error('Conversation not found');
+    return conv;
   }
 
   async createConversation(title?: string, model?: string): Promise<Conversation> {
-    const { data } = await this.client.post<ApiResponse<Conversation>>(
-      '/chat/conversations',
-      { title, model }
-    );
-    return data.data!;
+    const conversations = this.getLocalConversations();
+    const newConv: Conversation = {
+      id: `conv_${Date.now()}`,
+      title: title || 'New Chat',
+      model: model || 'default',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messageCount: 0,
+    };
+    conversations.unshift(newConv);
+    this.saveLocalConversations(conversations);
+    return newConv;
   }
 
   async deleteConversation(id: string): Promise<void> {
-    await this.client.delete(`/chat/conversations/${id}`);
+    const conversations = this.getLocalConversations();
+    const filtered = conversations.filter(c => c.id !== id);
+    this.saveLocalConversations(filtered);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`zentoria_messages_${id}`);
+    }
   }
 
   async getMessages(
@@ -118,22 +162,40 @@ class ApiClient {
     page = 1,
     pageSize = 50
   ): Promise<PaginatedResponse<ChatMessage>> {
-    const { data } = await this.client.get<ApiResponse<PaginatedResponse<ChatMessage>>>(
-      `/chat/conversations/${conversationId}/messages`,
-      { params: { page, pageSize } }
-    );
-    return data.data!;
+    const messages = this.getLocalMessages(conversationId);
+    const start = (page - 1) * pageSize;
+    const items = messages.slice(start, start + pageSize);
+    return {
+      items,
+      total: messages.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(messages.length / pageSize),
+    };
   }
 
   async sendMessage(request: ChatRequest): Promise<ChatMessage> {
-    const { data } = await this.client.post<ApiResponse<ChatMessage>>(
-      '/chat/messages',
-      request
+    // Send to MCP command endpoint
+    // Convert conversationId to sessionId format (sess_xxx)
+    const sessionId = request.conversationId ? `sess_${request.conversationId.replace('conv_', '')}` : undefined;
+    const { data } = await this.client.post<ApiResponse<{ id: string; content: string; sessionId?: string }>>(
+      '/mcp/command',
+      { command: request.message, ...(sessionId ? { sessionId } : {}) }
     );
-    return data.data!;
+
+    // Create response message
+    const responseMsg: ChatMessage = {
+      id: data.data?.id || `msg_${Date.now()}`,
+      conversationId: request.conversationId || '',
+      role: 'assistant',
+      content: data.data?.content || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    return responseMsg;
   }
 
-  // Streaming chat - returns EventSource-like interface
+  // Streaming chat - uses MCP command endpoint
   streamMessage(
     request: ChatRequest,
     onChunk: (chunk: string) => void,
@@ -142,56 +204,83 @@ class ApiClient {
   ): () => void {
     const controller = new AbortController();
 
-    fetch(`${API_URL}/api/chat/stream`, {
+    // First, save the user message locally
+    if (request.conversationId) {
+      const messages = this.getLocalMessages(request.conversationId);
+      const userMsg: ChatMessage = {
+        id: `msg_${Date.now()}_user`,
+        conversationId: request.conversationId,
+        role: 'user',
+        content: request.message,
+        createdAt: new Date().toISOString(),
+      };
+      messages.push(userMsg);
+      this.saveLocalMessages(request.conversationId, messages);
+
+      // Update conversation timestamp
+      const conversations = this.getLocalConversations();
+      const convIndex = conversations.findIndex(c => c.id === request.conversationId);
+      if (convIndex >= 0) {
+        conversations[convIndex].updatedAt = new Date().toISOString();
+        conversations[convIndex].messageCount = messages.length;
+        if (messages.length === 1) {
+          conversations[convIndex].title = request.message.slice(0, 50) + (request.message.length > 50 ? '...' : '');
+        }
+        this.saveLocalConversations(conversations);
+      }
+    }
+
+    // Send to MCP command endpoint (non-streaming since backend may not support streaming)
+    // Convert conversationId to sessionId format (sess_xxx)
+    const sessionId = request.conversationId ? `sess_${request.conversationId.replace('conv_', '')}` : undefined;
+
+    fetch(`${API_URL}/api/v1/mcp/command`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+        ...(this.apiKey ? { 'X-API-Key': this.apiKey } : {}),
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify({
+        command: request.message,
+        ...(sessionId ? { sessionId } : {})
+      }),
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error('No response body');
+        const data = await response.json();
+        const content = data.content || data.data?.content || 'No response from AI';
+
+        // Save assistant message locally
+        if (request.conversationId) {
+          const messages = this.getLocalMessages(request.conversationId);
+          const assistantMsg: ChatMessage = {
+            id: data.id || `msg_${Date.now()}_assistant`,
+            conversationId: request.conversationId,
+            role: 'assistant',
+            content: content,
+            createdAt: new Date().toISOString(),
+          };
+          messages.push(assistantMsg);
+          this.saveLocalMessages(request.conversationId, messages);
         }
 
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                onComplete();
-                return;
-              }
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.content) {
-                  onChunk(parsed.content);
-                }
-              } catch {
-                // Skip invalid JSON
-              }
-            }
+        // Simulate streaming by sending content in chunks
+        const words = content.split(' ');
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < words.length) {
+            onChunk(words[i] + (i < words.length - 1 ? ' ' : ''));
+            i++;
+          } else {
+            clearInterval(interval);
+            onComplete();
           }
-        }
-
-        onComplete();
+        }, 30);
       })
       .catch((error) => {
         if (error.name !== 'AbortError') {
@@ -204,24 +293,24 @@ class ApiClient {
   }
 
   // ============================
-  // File Endpoints
+  // File Endpoints (using /mcp prefix)
   // ============================
 
   async listFiles(path = '/', page = 1, pageSize = 50): Promise<PaginatedResponse<FileItem>> {
     const { data } = await this.client.get<ApiResponse<PaginatedResponse<FileItem>>>(
-      '/files',
+      '/mcp/files',
       { params: { path, page, pageSize } }
     );
     return data.data!;
   }
 
   async getFile(id: string): Promise<FileItem> {
-    const { data } = await this.client.get<ApiResponse<FileItem>>(`/files/${id}`);
+    const { data } = await this.client.get<ApiResponse<FileItem>>(`/mcp/files/${id}`);
     return data.data!;
   }
 
   async createFolder(path: string, name: string): Promise<FileItem> {
-    const { data } = await this.client.post<ApiResponse<FileItem>>('/files/folder', {
+    const { data } = await this.client.post<ApiResponse<FileItem>>('/mcp/files/folder', {
       path,
       name,
     });
@@ -229,18 +318,18 @@ class ApiClient {
   }
 
   async deleteFile(id: string): Promise<void> {
-    await this.client.delete(`/files/${id}`);
+    await this.client.delete(`/mcp/files/${id}`);
   }
 
   async moveFile(id: string, newPath: string): Promise<FileItem> {
-    const { data } = await this.client.patch<ApiResponse<FileItem>>(`/files/${id}/move`, {
+    const { data } = await this.client.patch<ApiResponse<FileItem>>(`/mcp/files/${id}/move`, {
       path: newPath,
     });
     return data.data!;
   }
 
   async renameFile(id: string, newName: string): Promise<FileItem> {
-    const { data } = await this.client.patch<ApiResponse<FileItem>>(`/files/${id}/rename`, {
+    const { data } = await this.client.patch<ApiResponse<FileItem>>(`/mcp/files/${id}/rename`, {
       name: newName,
     });
     return data.data!;
@@ -267,7 +356,7 @@ class ApiClient {
     };
 
     const { data } = await this.client.post<ApiResponse<FileItem>>(
-      '/files/upload',
+      '/mcp/upload',
       formData,
       config
     );
@@ -275,11 +364,11 @@ class ApiClient {
   }
 
   getFileDownloadUrl(id: string): string {
-    return `${API_URL}/api/files/${id}/download`;
+    return `${API_URL}/api/v1/mcp/files/${id}/download`;
   }
 
   getFileThumbnailUrl(id: string): string {
-    return `${API_URL}/api/files/${id}/thumbnail`;
+    return `${API_URL}/api/v1/mcp/files/${id}/thumbnail`;
   }
 
   // ============================

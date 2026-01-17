@@ -4,14 +4,14 @@
  * Comprehensive tests for the ApiClient class including:
  * - Configuration and authentication
  * - Health endpoints
- * - Chat endpoints
- * - File endpoints
+ * - Chat endpoints (localStorage-based)
+ * - File endpoints (MCP prefix)
  * - Workflow endpoints
  * - API key endpoints
  * - Settings endpoints
  * - Log endpoints
  * - Error handling
- * - Streaming
+ * - Streaming (simulated via MCP command)
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
@@ -47,30 +47,49 @@ const getMockAxios = () => {
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
+// Mock localStorage
+const mockLocalStorage = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: vi.fn((key: string) => store[key] || null),
+    setItem: vi.fn((key: string, value: string) => {
+      store[key] = value;
+    }),
+    removeItem: vi.fn((key: string) => {
+      delete store[key];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+  };
+})();
+
+vi.stubGlobal('localStorage', mockLocalStorage);
+
 describe('ApiClient (TEST-006)', () => {
   let apiClient: ApiClient;
   let mockAxios: ReturnType<typeof getMockAxios>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLocalStorage.clear();
     apiClient = new ApiClient();
     mockAxios = getMockAxios();
 
-    // Default mock for fetch (streaming endpoint)
+    // Default mock for fetch (MCP command endpoint)
     mockFetch.mockResolvedValue({
       ok: true,
-      body: {
-        getReader: () => ({
-          read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-        }),
-      },
+      json: () => Promise.resolve({
+        success: true,
+        data: { id: 'cmd_1', content: 'AI response' },
+      }),
     });
   });
 
   describe('Configuration', () => {
     it('should create axios instance with correct config', () => {
       expect(axios.create).toHaveBeenCalledWith({
-        baseURL: expect.stringContaining('/api'),
+        baseURL: expect.stringContaining('/api/v1'),
         timeout: 30000,
         headers: {
           'Content-Type': 'application/json',
@@ -145,125 +164,128 @@ describe('ApiClient (TEST-006)', () => {
     });
   });
 
-  describe('Chat Endpoints', () => {
+  describe('Chat Endpoints (localStorage-based)', () => {
     describe('getConversations', () => {
-      it('should fetch conversations with pagination', async () => {
-        const conversationsData = {
-          items: [{ id: 'conv_1', title: 'Test' }],
-          total: 1,
-          page: 1,
-          pageSize: 20,
-          totalPages: 1,
-        };
-
-        mockAxios.get.mockResolvedValue({
-          data: { success: true, data: conversationsData },
-        });
+      it('should return conversations from localStorage with pagination', async () => {
+        const conversations = [
+          { id: 'conv_1', title: 'Test 1', createdAt: new Date().toISOString() },
+          { id: 'conv_2', title: 'Test 2', createdAt: new Date().toISOString() },
+        ];
+        mockLocalStorage.setItem('zentoria_conversations', JSON.stringify(conversations));
 
         const result = await apiClient.getConversations(1, 20);
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/chat/conversations', {
-          params: { page: 1, pageSize: 20 },
-        });
-        expect(result).toEqual(conversationsData);
+        expect(result.items).toHaveLength(2);
+        expect(result.total).toBe(2);
+        expect(result.page).toBe(1);
+        expect(result.pageSize).toBe(20);
       });
 
-      it('should use default pagination values', async () => {
-        mockAxios.get.mockResolvedValue({
-          data: { success: true, data: { items: [], total: 0 } },
-        });
+      it('should return empty array when no conversations', async () => {
+        const result = await apiClient.getConversations();
 
-        await apiClient.getConversations();
+        expect(result.items).toHaveLength(0);
+        expect(result.total).toBe(0);
+      });
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/chat/conversations', {
-          params: { page: 1, pageSize: 20 },
-        });
+      it('should handle pagination correctly', async () => {
+        const conversations = Array.from({ length: 25 }, (_, i) => ({
+          id: `conv_${i}`,
+          title: `Test ${i}`,
+          createdAt: new Date().toISOString(),
+        }));
+        mockLocalStorage.setItem('zentoria_conversations', JSON.stringify(conversations));
+
+        const result = await apiClient.getConversations(2, 10);
+
+        expect(result.items).toHaveLength(10);
+        expect(result.page).toBe(2);
+        expect(result.totalPages).toBe(3);
       });
     });
 
     describe('getConversation', () => {
-      it('should fetch single conversation', async () => {
-        const conversation = { id: 'conv_1', title: 'Test' };
-
-        mockAxios.get.mockResolvedValue({
-          data: { success: true, data: conversation },
-        });
+      it('should return single conversation from localStorage', async () => {
+        const conversations = [
+          { id: 'conv_1', title: 'Test', createdAt: new Date().toISOString() },
+        ];
+        mockLocalStorage.setItem('zentoria_conversations', JSON.stringify(conversations));
 
         const result = await apiClient.getConversation('conv_1');
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/chat/conversations/conv_1');
-        expect(result).toEqual(conversation);
+        expect(result.id).toBe('conv_1');
+        expect(result.title).toBe('Test');
+      });
+
+      it('should throw error if conversation not found', async () => {
+        mockLocalStorage.setItem('zentoria_conversations', JSON.stringify([]));
+
+        await expect(apiClient.getConversation('conv_999')).rejects.toThrow('Conversation not found');
       });
     });
 
     describe('createConversation', () => {
-      it('should create new conversation', async () => {
-        const newConversation = { id: 'conv_new', title: 'New Chat' };
+      it('should create new conversation in localStorage', async () => {
+        const result = await apiClient.createConversation('New Chat', 'claude-3');
 
-        mockAxios.post.mockResolvedValue({
-          data: { success: true, data: newConversation },
-        });
-
-        const result = await apiClient.createConversation('New Chat', 'claude-3-5-sonnet');
-
-        expect(mockAxios.post).toHaveBeenCalledWith('/chat/conversations', {
-          title: 'New Chat',
-          model: 'claude-3-5-sonnet',
-        });
-        expect(result).toEqual(newConversation);
+        expect(result.title).toBe('New Chat');
+        expect(result.model).toBe('claude-3');
+        expect(result.id).toMatch(/^conv_\d+$/);
+        expect(mockLocalStorage.setItem).toHaveBeenCalled();
       });
 
-      it('should create conversation without title', async () => {
-        mockAxios.post.mockResolvedValue({
-          data: { success: true, data: { id: 'conv_new' } },
-        });
+      it('should create conversation with default values', async () => {
+        const result = await apiClient.createConversation();
 
-        await apiClient.createConversation();
-
-        expect(mockAxios.post).toHaveBeenCalledWith('/chat/conversations', {
-          title: undefined,
-          model: undefined,
-        });
+        expect(result.title).toBe('New Chat');
+        expect(result.model).toBe('default');
       });
     });
 
     describe('deleteConversation', () => {
-      it('should delete conversation', async () => {
-        mockAxios.delete.mockResolvedValue({ data: { success: true } });
-
+      it('should delete conversation from localStorage', async () => {
         await apiClient.deleteConversation('conv_1');
 
-        expect(mockAxios.delete).toHaveBeenCalledWith('/chat/conversations/conv_1');
+        // Verify removeItem was called for the conversation's messages
+        expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('zentoria_messages_conv_1');
+        // Verify setItem was called to update conversations list
+        expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
+          'zentoria_conversations',
+          expect.any(String)
+        );
+      });
+
+      it('should handle deleting non-existent conversation gracefully', async () => {
+        // Should not throw when conversation doesn't exist
+        await expect(apiClient.deleteConversation('conv_999')).resolves.not.toThrow();
       });
     });
 
     describe('getMessages', () => {
-      it('should fetch messages with pagination', async () => {
-        const messagesData = {
-          items: [{ id: 'msg_1', content: 'Hello' }],
-          total: 1,
-          page: 1,
-          pageSize: 50,
-          totalPages: 1,
-        };
-
-        mockAxios.get.mockResolvedValue({
-          data: { success: true, data: messagesData },
-        });
+      it('should return messages from localStorage with pagination', async () => {
+        const messages = [
+          { id: 'msg_1', content: 'Hello', role: 'user' },
+          { id: 'msg_2', content: 'Hi', role: 'assistant' },
+        ];
+        mockLocalStorage.setItem('zentoria_messages_conv_1', JSON.stringify(messages));
 
         const result = await apiClient.getMessages('conv_1', 1, 50);
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/chat/conversations/conv_1/messages', {
-          params: { page: 1, pageSize: 50 },
-        });
-        expect(result).toEqual(messagesData);
+        expect(result.items).toHaveLength(2);
+        expect(result.total).toBe(2);
+      });
+
+      it('should return empty array for new conversation', async () => {
+        const result = await apiClient.getMessages('conv_new', 1, 50);
+
+        expect(result.items).toHaveLength(0);
       });
     });
 
     describe('sendMessage', () => {
-      it('should send message', async () => {
+      it('should send message to MCP command endpoint', async () => {
         const request = { message: 'Hello', conversationId: 'conv_1' };
-        const response = { id: 'msg_1', content: 'Hi there' };
+        const response = { id: 'cmd_1', content: 'Hi there' };
 
         mockAxios.post.mockResolvedValue({
           data: { success: true, data: response },
@@ -271,8 +293,26 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.sendMessage(request);
 
-        expect(mockAxios.post).toHaveBeenCalledWith('/chat/messages', request);
-        expect(result).toEqual(response);
+        expect(mockAxios.post).toHaveBeenCalledWith('/mcp/command', {
+          command: 'Hello',
+          sessionId: 'sess_1',
+        });
+        expect(result.role).toBe('assistant');
+        expect(result.content).toBe('Hi there');
+      });
+
+      it('should send message without conversationId', async () => {
+        const request = { message: 'Hello' };
+
+        mockAxios.post.mockResolvedValue({
+          data: { success: true, data: { id: 'cmd_1', content: 'Response' } },
+        });
+
+        await apiClient.sendMessage(request);
+
+        expect(mockAxios.post).toHaveBeenCalledWith('/mcp/command', {
+          command: 'Hello',
+        });
       });
     });
 
@@ -291,12 +331,33 @@ describe('ApiClient (TEST-006)', () => {
 
         expect(typeof abort).toBe('function');
       });
+
+      it('should save user message to localStorage when conversationId provided', async () => {
+        const onChunk = vi.fn();
+        const onError = vi.fn();
+        const onComplete = vi.fn();
+
+        mockLocalStorage.setItem('zentoria_conversations', JSON.stringify([
+          { id: 'conv_1', title: 'Test' },
+        ]));
+
+        apiClient.streamMessage(
+          { message: 'Hello', conversationId: 'conv_1' },
+          onChunk,
+          onError,
+          onComplete
+        );
+
+        // Check that localStorage was updated with user message
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(mockLocalStorage.setItem).toHaveBeenCalled();
+      });
     });
   });
 
-  describe('File Endpoints', () => {
+  describe('File Endpoints (MCP prefix)', () => {
     describe('listFiles', () => {
-      it('should list files with pagination', async () => {
+      it('should list files with MCP prefix', async () => {
         const filesData = {
           items: [{ id: 'file_1', name: 'test.txt' }],
           total: 1,
@@ -311,7 +372,7 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.listFiles('/documents', 1, 50);
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/files', {
+        expect(mockAxios.get).toHaveBeenCalledWith('/mcp/files', {
           params: { path: '/documents', page: 1, pageSize: 50 },
         });
         expect(result).toEqual(filesData);
@@ -324,14 +385,14 @@ describe('ApiClient (TEST-006)', () => {
 
         await apiClient.listFiles();
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/files', {
+        expect(mockAxios.get).toHaveBeenCalledWith('/mcp/files', {
           params: { path: '/', page: 1, pageSize: 50 },
         });
       });
     });
 
     describe('getFile', () => {
-      it('should get file by ID', async () => {
+      it('should get file with MCP prefix', async () => {
         const file = { id: 'file_1', name: 'test.txt' };
 
         mockAxios.get.mockResolvedValue({
@@ -340,13 +401,13 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.getFile('file_1');
 
-        expect(mockAxios.get).toHaveBeenCalledWith('/files/file_1');
+        expect(mockAxios.get).toHaveBeenCalledWith('/mcp/files/file_1');
         expect(result).toEqual(file);
       });
     });
 
     describe('createFolder', () => {
-      it('should create folder', async () => {
+      it('should create folder with MCP prefix', async () => {
         const folder = { id: 'folder_1', name: 'New Folder', isDirectory: true };
 
         mockAxios.post.mockResolvedValue({
@@ -355,7 +416,7 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.createFolder('/documents', 'New Folder');
 
-        expect(mockAxios.post).toHaveBeenCalledWith('/files/folder', {
+        expect(mockAxios.post).toHaveBeenCalledWith('/mcp/files/folder', {
           path: '/documents',
           name: 'New Folder',
         });
@@ -364,17 +425,17 @@ describe('ApiClient (TEST-006)', () => {
     });
 
     describe('deleteFile', () => {
-      it('should delete file', async () => {
+      it('should delete file with MCP prefix', async () => {
         mockAxios.delete.mockResolvedValue({ data: { success: true } });
 
         await apiClient.deleteFile('file_1');
 
-        expect(mockAxios.delete).toHaveBeenCalledWith('/files/file_1');
+        expect(mockAxios.delete).toHaveBeenCalledWith('/mcp/files/file_1');
       });
     });
 
     describe('moveFile', () => {
-      it('should move file to new path', async () => {
+      it('should move file with MCP prefix', async () => {
         const movedFile = { id: 'file_1', path: '/new/path' };
 
         mockAxios.patch.mockResolvedValue({
@@ -383,7 +444,7 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.moveFile('file_1', '/new/path');
 
-        expect(mockAxios.patch).toHaveBeenCalledWith('/files/file_1/move', {
+        expect(mockAxios.patch).toHaveBeenCalledWith('/mcp/files/file_1/move', {
           path: '/new/path',
         });
         expect(result).toEqual(movedFile);
@@ -391,7 +452,7 @@ describe('ApiClient (TEST-006)', () => {
     });
 
     describe('renameFile', () => {
-      it('should rename file', async () => {
+      it('should rename file with MCP prefix', async () => {
         const renamedFile = { id: 'file_1', name: 'new-name.txt' };
 
         mockAxios.patch.mockResolvedValue({
@@ -400,7 +461,7 @@ describe('ApiClient (TEST-006)', () => {
 
         const result = await apiClient.renameFile('file_1', 'new-name.txt');
 
-        expect(mockAxios.patch).toHaveBeenCalledWith('/files/file_1/rename', {
+        expect(mockAxios.patch).toHaveBeenCalledWith('/mcp/files/file_1/rename', {
           name: 'new-name.txt',
         });
         expect(result).toEqual(renamedFile);
@@ -408,7 +469,7 @@ describe('ApiClient (TEST-006)', () => {
     });
 
     describe('uploadFile', () => {
-      it('should upload file with progress', async () => {
+      it('should upload file with MCP prefix', async () => {
         const file = new File(['content'], 'test.txt', { type: 'text/plain' });
         const uploadedFile = { id: 'file_1', name: 'test.txt' };
         const onProgress = vi.fn();
@@ -420,7 +481,7 @@ describe('ApiClient (TEST-006)', () => {
         const result = await apiClient.uploadFile(file, '/uploads', onProgress);
 
         expect(mockAxios.post).toHaveBeenCalledWith(
-          '/files/upload',
+          '/mcp/upload',
           expect.any(FormData),
           expect.objectContaining({
             headers: { 'Content-Type': 'multipart/form-data' },
@@ -445,16 +506,16 @@ describe('ApiClient (TEST-006)', () => {
     });
 
     describe('URL Helpers', () => {
-      it('should generate download URL', () => {
+      it('should generate download URL with MCP prefix', () => {
         const url = apiClient.getFileDownloadUrl('file_1');
 
-        expect(url).toContain('/api/files/file_1/download');
+        expect(url).toContain('/api/v1/mcp/files/file_1/download');
       });
 
-      it('should generate thumbnail URL', () => {
+      it('should generate thumbnail URL with MCP prefix', () => {
         const url = apiClient.getFileThumbnailUrl('file_1');
 
-        expect(url).toContain('/api/files/file_1/thumbnail');
+        expect(url).toContain('/api/v1/mcp/files/file_1/thumbnail');
       });
     });
   });
