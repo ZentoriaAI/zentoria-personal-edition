@@ -553,22 +553,22 @@ describe('FileService (TEST-009)', () => {
 
       it('should log info when detected type differs but is compatible', async () => {
         const stream = createMockStream();
-        const fileRecord = createMockFileRecord();
+        const fileRecord = createMockFileRecord({ mimeType: 'text/plain' });
 
         mockFileRepository.create.mockResolvedValue(fileRecord);
 
         (validateFileMagicBytes as any).mockResolvedValue({
           result: {
             valid: true,
-            detectedMimeType: 'application/zip',
+            detectedMimeType: 'text/html',
           },
           bufferedChunks: [Buffer.from('test')],
         });
 
         await fileService.uploadFile(
           'user_123',
-          'document.docx',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'document.txt',
+          'text/plain',
           stream,
           1024,
           validUploadOptions
@@ -576,8 +576,8 @@ describe('FileService (TEST-009)', () => {
 
         expect(mockLogger.info).toHaveBeenCalledWith(
           expect.objectContaining({
-            claimedMimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            detectedMimeType: 'application/zip',
+            claimedMimeType: 'text/plain',
+            detectedMimeType: 'text/html',
           }),
           'File MIME type compatible but different'
         );
