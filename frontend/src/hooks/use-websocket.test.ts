@@ -123,12 +123,12 @@ describe('useWebSocket', () => {
 
   it('calls onConnect callback when socket connects', async () => {
     const onConnect = vi.fn();
-    let connectHandler: (() => void) | null = null;
+    const connectHandlers: (() => void)[] = [];
 
-    // Capture the connect handler
+    // Capture ALL connect handlers (manager registers 2: status setter + event re-registerer)
     mockOn.mockImplementation((event: string, handler: () => void) => {
       if (event === 'connect') {
-        connectHandler = handler;
+        connectHandlers.push(handler);
       }
     });
 
@@ -136,9 +136,9 @@ describe('useWebSocket', () => {
       useWebSocket({ autoConnect: true, onConnect })
     );
 
-    // Simulate socket connect event
+    // Simulate socket connect event - call all connect handlers
     await act(async () => {
-      connectHandler?.();
+      connectHandlers.forEach(handler => handler());
       // Allow React to process state updates
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
@@ -148,12 +148,12 @@ describe('useWebSocket', () => {
 
   it('calls onDisconnect callback when socket disconnects', async () => {
     const onDisconnect = vi.fn();
-    let connectHandler: (() => void) | null = null;
+    const connectHandlers: (() => void)[] = [];
     let disconnectHandler: (() => void) | null = null;
 
     mockOn.mockImplementation((event: string, handler: () => void) => {
       if (event === 'connect') {
-        connectHandler = handler;
+        connectHandlers.push(handler);
       }
       if (event === 'disconnect') {
         disconnectHandler = handler;
@@ -166,7 +166,7 @@ describe('useWebSocket', () => {
 
     // First connect, then disconnect (onDisconnect only fires when transitioning from connected)
     await act(async () => {
-      connectHandler?.(); // Connect first
+      connectHandlers.forEach(handler => handler()); // Connect first - call all handlers
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
@@ -206,10 +206,10 @@ describe('useWebSocket', () => {
 
   it('disconnects and cleans up on unmount', async () => {
     // Need to capture handlers to trigger connection first
-    let connectHandler: (() => void) | null = null;
+    const connectHandlers: (() => void)[] = [];
     mockOn.mockImplementation((event: string, handler: () => void) => {
       if (event === 'connect') {
-        connectHandler = handler;
+        connectHandlers.push(handler);
       }
     });
 
@@ -219,7 +219,7 @@ describe('useWebSocket', () => {
 
     // Simulate successful connection so there's something to disconnect
     await act(async () => {
-      connectHandler?.();
+      connectHandlers.forEach(handler => handler());
       await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
