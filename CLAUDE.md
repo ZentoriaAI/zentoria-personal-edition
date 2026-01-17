@@ -484,32 +484,32 @@ npm run test:e2e:headed    # Visible browser
 
 | File | Tests | Description |
 |------|-------|-------------|
-| `api-key.service.test.ts` | 64 | API key validation, creation, caching (SEC-005) |
+| `api-key.service.test.ts` | 74 | API key validation, creation, caching (SEC-005) |
 | `command-processor.test.ts` | 54 | AI command processing (ARCH-001) |
 | `command-response-builder.test.ts` | 37 | Response construction (ARCH-001) |
-| `file-context-loader.test.ts` | 19 | File context loading for AI (ARCH-001) |
+| `file-context-loader.test.ts` | 36 | File context loading for AI (ARCH-001) |
 | `file.service.test.ts` | 73 | File upload, MIME validation, magic bytes (SEC-004) |
 | `health.test.ts` | 18 | Health check endpoints |
 | `input-sanitizer.test.ts` | 47 | Input sanitization, prompt injection (SEC-006) |
-| `security.test.ts` | 47 | Auth middleware, rate limiter, scope checks |
+| `security.test.ts` | 57 | Auth middleware, rate limiter, scope checks |
 | `integration.test.ts` | 52 | Full API route integration tests |
 
-**Total Backend: 411 tests**
+**Total Backend: 448 tests** ✅
 
 ### Frontend Unit Test Files
 
 | File | Tests | Description |
 |------|-------|-------------|
 | `src/stores/app-store.test.ts` | 31 | Theme, Sidebar, Toast, CommandPalette stores |
-| `src/stores/chat-store.test.ts` | ~35 | Chat store, messages, streaming (PERF-011) |
-| `src/stores/file-store.test.ts` | ~45 | File store, selection, uploads |
+| `src/stores/chat-store.test.ts` | 54 | Chat store, messages, streaming (PERF-011) |
+| `src/stores/file-store.test.ts` | 58 | File store, selection, uploads |
 | `src/hooks/use-websocket.test.ts` | 37 | WebSocket hooks (PERF-003) |
-| `src/lib/api-client.test.ts` | ~50 | Axios API client |
+| `src/lib/api-client.test.ts` | 47 | Axios API client |
 | `src/lib/utils.test.ts` | 42 | Utility functions |
 | `src/components/ui/*.test.tsx` | 108 | Button, Badge, Card components |
 | `src/components/layout/*.test.tsx` | 75 | Header, Sidebar components |
 
-**Total Frontend Unit: ~423 tests**
+**Total Frontend Unit: 452 tests** ✅
 
 ### E2E Test Files (Playwright)
 
@@ -873,10 +873,15 @@ npm run dev          # Development server
 
 ---
 
-**Version:** 1.5
+**Version:** 1.6
 **Last Updated:** January 17, 2026
 
 ### Changelog
+- v1.6: Fixed all test failures - 448 backend tests + 452 frontend tests now passing
+- v1.6: Fixed input-sanitizer regex pattern tests (prompt_leaking, code_execution, medium_risk)
+- v1.6: Fixed health.test.ts mock state leakage
+- v1.6: Added WebSocket singleton reset function for test isolation
+- v1.6: Fixed WebSocket callback tests (capture all connect handlers)
 - v1.5: Added Git repository setup (https://github.com/ZentoriaAI/zentoria-personal-edition)
 - v1.5: Backend build now uses esbuild for transpile-only compilation (faster builds)
 - v1.5: Fixed frontend dependencies and TypeScript config for production builds
