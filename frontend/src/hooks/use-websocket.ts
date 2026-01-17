@@ -405,13 +405,14 @@ export function useChatUpdates(sessionId?: string) {
       setMessages((prev) => [...prev, data]);
     };
 
-    const handleChunk = (data: { chunk: string; messageId: string }) => {
+    const handleChunk = (data: unknown) => {
+      const chunkData = data as { chunk: string; messageId: string };
       setMessages((prev) => {
         const lastMessage = prev[prev.length - 1] as { id?: string; content?: string } | undefined;
-        if (lastMessage && lastMessage.id === data.messageId) {
+        if (lastMessage && lastMessage.id === chunkData.messageId) {
           return [
             ...prev.slice(0, -1),
-            { ...lastMessage, content: (lastMessage.content || '') + data.chunk },
+            { ...lastMessage, content: (lastMessage.content || '') + chunkData.chunk },
           ];
         }
         return prev;
