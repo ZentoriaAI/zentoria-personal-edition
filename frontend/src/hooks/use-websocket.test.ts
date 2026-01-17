@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useWebSocket, useSystemHealth, useWorkflowUpdates, useLogStream } from './use-websocket';
+import { useWebSocket, useSystemHealth, useWorkflowUpdates, useLogStream, __resetWebSocketManager } from './use-websocket';
 
 // Mock socket.io-client
 const mockOn = vi.fn();
@@ -34,10 +34,13 @@ describe('useWebSocket', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSocket.connected = false;
+    // Reset singleton state between tests
+    __resetWebSocketManager();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    __resetWebSocketManager();
   });
 
   it('starts with disconnected status', () => {
@@ -120,29 +123,38 @@ describe('useWebSocket', () => {
 
   it('calls onConnect callback when socket connects', async () => {
     const onConnect = vi.fn();
+    let connectHandler: (() => void) | null = null;
 
-    // Reset mock to capture event handlers
+    // Capture the connect handler
     mockOn.mockImplementation((event: string, handler: () => void) => {
       if (event === 'connect') {
-        // Simulate immediate connection
-        setTimeout(() => handler(), 0);
+        connectHandler = handler;
       }
     });
 
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useWebSocket({ autoConnect: true, onConnect })
     );
 
-    await waitFor(() => {
-      expect(onConnect).toHaveBeenCalled();
+    // Simulate socket connect event
+    await act(async () => {
+      connectHandler?.();
+      // Allow React to process state updates
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
+
+    expect(onConnect).toHaveBeenCalled();
   });
 
   it('calls onDisconnect callback when socket disconnects', async () => {
     const onDisconnect = vi.fn();
-    let disconnectHandler: () => void;
+    let connectHandler: (() => void) | null = null;
+    let disconnectHandler: (() => void) | null = null;
 
     mockOn.mockImplementation((event: string, handler: () => void) => {
+      if (event === 'connect') {
+        connectHandler = handler;
+      }
       if (event === 'disconnect') {
         disconnectHandler = handler;
       }
@@ -152,9 +164,15 @@ describe('useWebSocket', () => {
       useWebSocket({ autoConnect: true, onDisconnect })
     );
 
-    // Simulate disconnect
-    act(() => {
-      disconnectHandler?.();
+    // First connect, then disconnect (onDisconnect only fires when transitioning from connected)
+    await act(async () => {
+      connectHandler?.(); // Connect first
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    await act(async () => {
+      disconnectHandler?.(); // Then disconnect
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     expect(onDisconnect).toHaveBeenCalled();
@@ -162,9 +180,9 @@ describe('useWebSocket', () => {
 
   it('calls onError callback on connect_error', async () => {
     const onError = vi.fn();
-    let errorHandler: (error: Error) => void;
+    let errorHandler: (() => void) | null = null;
 
-    mockOn.mockImplementation((event: string, handler: (error: Error) => void) => {
+    mockOn.mockImplementation((event: string, handler: () => void) => {
       if (event === 'connect_error') {
         errorHandler = handler;
       }
@@ -174,22 +192,40 @@ describe('useWebSocket', () => {
       useWebSocket({ autoConnect: true, onError })
     );
 
-    const testError = new Error('Connection failed');
-
-    act(() => {
-      errorHandler?.(testError);
+    // Manager sets status to 'error' after maxReconnectAttempts (5) errors
+    await act(async () => {
+      for (let i = 0; i < 5; i++) {
+        errorHandler?.();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
-    expect(onError).toHaveBeenCalledWith(testError);
+    // onError is called with a generic error message, not the socket error
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it('disconnects and cleans up on unmount', () => {
+  it('disconnects and cleans up on unmount', async () => {
+    // Need to capture handlers to trigger connection first
+    let connectHandler: (() => void) | null = null;
+    mockOn.mockImplementation((event: string, handler: () => void) => {
+      if (event === 'connect') {
+        connectHandler = handler;
+      }
+    });
+
     const { unmount } = renderHook(() =>
       useWebSocket({ autoConnect: true })
     );
 
+    // Simulate successful connection so there's something to disconnect
+    await act(async () => {
+      connectHandler?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
     unmount();
 
+    // After unmount with refCount=0, manager calls socket.disconnect()
     expect(mockDisconnect).toHaveBeenCalled();
   });
 
@@ -212,6 +248,7 @@ describe('useWebSocket', () => {
 describe('useSystemHealth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetWebSocketManager();
   });
 
   it('starts with null health data', () => {
@@ -268,6 +305,7 @@ describe('useSystemHealth', () => {
 describe('useWorkflowUpdates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetWebSocketManager();
   });
 
   it('starts with empty executions array', () => {
@@ -368,6 +406,7 @@ describe('useWorkflowUpdates', () => {
 describe('useLogStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetWebSocketManager();
   });
 
   it('starts with empty logs array', () => {

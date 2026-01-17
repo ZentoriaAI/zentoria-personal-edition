@@ -447,3 +447,33 @@ export function useChatUpdates(sessionId?: string) {
 
 // Export manager for advanced use cases
 export { WebSocketManager };
+
+// Test helper to reset singleton state
+export function __resetWebSocketManager(): void {
+  const manager = WebSocketManager.getInstance() as WebSocketManager & {
+    socket: unknown;
+    status: ConnectionStatus;
+    refCount: number;
+    eventListeners: Map<string, Set<unknown>>;
+    statusListeners: Set<unknown>;
+    reconnectAttempts: number;
+  };
+
+  // Disconnect and cleanup
+  if (manager['socket']) {
+    try {
+      (manager['socket'] as { removeAllListeners?: () => void; disconnect?: () => void })?.removeAllListeners?.();
+      (manager['socket'] as { disconnect?: () => void })?.disconnect?.();
+    } catch {
+      // Ignore cleanup errors in tests
+    }
+    manager['socket'] = null;
+  }
+
+  // Reset state
+  manager['status'] = 'disconnected';
+  manager['refCount'] = 0;
+  manager['eventListeners'] = new Map();
+  manager['statusListeners'] = new Set();
+  manager['reconnectAttempts'] = 0;
+}
