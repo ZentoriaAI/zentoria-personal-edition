@@ -183,18 +183,4 @@ async function registerRoutes(server: FastifyInstance): Promise<void> {
   logger.info('Routes registered');
 }
 
-// Type augmentation for Fastify
-declare module 'fastify' {
-  interface FastifyInstance {
-    container: AwilixContainer;
-  }
-
-  interface FastifyRequest {
-    user?: {
-      id: string;
-      email: string;
-      scopes: string[];
-      apiKeyId?: string;
-    };
-  }
-}
+// Type augmentations are in src/types/fastify.d.ts
