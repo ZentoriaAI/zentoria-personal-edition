@@ -14,12 +14,15 @@ const mockEmit = vi.fn();
 const mockDisconnect = vi.fn();
 const mockConnect = vi.fn();
 
+const mockRemoveAllListeners = vi.fn();
+
 const mockSocket = {
   on: mockOn,
   off: mockOff,
   emit: mockEmit,
   disconnect: mockDisconnect,
   connect: mockConnect,
+  removeAllListeners: mockRemoveAllListeners,
   connected: false,
 };
 

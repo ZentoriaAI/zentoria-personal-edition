@@ -43,6 +43,10 @@ const getMockAxios = () => {
   return (axios.create as any)();
 };
 
+// Mock global fetch for streaming tests
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
 describe('ApiClient (TEST-006)', () => {
   let apiClient: ApiClient;
   let mockAxios: ReturnType<typeof getMockAxios>;
@@ -51,6 +55,16 @@ describe('ApiClient (TEST-006)', () => {
     vi.clearAllMocks();
     apiClient = new ApiClient();
     mockAxios = getMockAxios();
+
+    // Default mock for fetch (streaming endpoint)
+    mockFetch.mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+        }),
+      },
+    });
   });
 
   describe('Configuration', () => {

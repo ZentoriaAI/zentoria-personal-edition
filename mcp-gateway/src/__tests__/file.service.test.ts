@@ -62,6 +62,12 @@ const createMockAuditRepository = () => ({
   log: vi.fn().mockResolvedValue(undefined),
 });
 
+const createMockEventBus = () => ({
+  publish: vi.fn().mockResolvedValue(undefined),
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
+});
+
 const createMockLogger = () => ({
   info: vi.fn(),
   warn: vi.fn(),
@@ -100,6 +106,7 @@ describe('FileService (TEST-009)', () => {
   let mockMinio: ReturnType<typeof createMockMinio>;
   let mockFileRepository: ReturnType<typeof createMockFileRepository>;
   let mockAuditRepository: ReturnType<typeof createMockAuditRepository>;
+  let mockEventBus: ReturnType<typeof createMockEventBus>;
   let mockLogger: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
@@ -108,6 +115,7 @@ describe('FileService (TEST-009)', () => {
     mockMinio = createMockMinio();
     mockFileRepository = createMockFileRepository();
     mockAuditRepository = createMockAuditRepository();
+    mockEventBus = createMockEventBus();
     mockLogger = createMockLogger();
 
     // Default mock for magic byte validation
@@ -120,6 +128,7 @@ describe('FileService (TEST-009)', () => {
       minio: mockMinio as any,
       fileRepository: mockFileRepository as any,
       auditRepository: mockAuditRepository as any,
+      eventBus: mockEventBus as any,
       logger: mockLogger as any,
     } as any);
   });
