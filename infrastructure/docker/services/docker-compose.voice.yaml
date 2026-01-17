@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  # Faster-Whisper service for speech-to-text
+  whisper-service:
+    image: zentoria/whisper-service:latest
+    container_name: zentoria-whisper
+    hostname: whisper
+    restart: unless-stopped
+    ports:
+      - "8005:8000"
+    environment:
+      LOG_LEVEL: ${WHISPER_LOG_LEVEL:-info}
+      MODEL_SIZE: ${WHISPER_MODEL:-base}
+      DEVICE: ${WHISPER_DEVICE:-cuda}
+      COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-float16}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/7
+      MAX_QUEUE_SIZE: ${WHISPER_MAX_QUEUE:-100}
+      BATCH_SIZE: ${WHISPER_BATCH_SIZE:-1}
+      LANGUAGE: ${WHISPER_LANGUAGE:-}
+      TASK: ${WHISPER_TASK:-transcribe}
+    volumes:
+      - whisper_models:/app/models
+      - ./whisper-service/config.yaml:/app/config.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '4'
+        memory: 4G
+      reservations:
+        cpus: '2'
+        memory: 2G
+
+  # Piper TTS service for text-to-speech
+  piper-service:
+    image: zentoria/piper-service:latest
+    container_name: zentoria-piper
+    hostname: piper
+    restart: unless-stopped
+    ports:
+      - "8006:8000"
+    environment:
+      LOG_LEVEL: ${PIPER_LOG_LEVEL:-info}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/8
+      DEFAULT_VOICE: ${PIPER_DEFAULT_VOICE:-en_US-lessac-medium}
+      SPEAKER: ${PIPER_SPEAKER:-0}
+      LENGTH_SCALE: ${PIPER_LENGTH_SCALE:-1.0}
+      NOISE_SCALE: ${PIPER_NOISE_SCALE:-0.667}
+      NOISE_W: ${PIPER_NOISE_W:-0.8}
+    volumes:
+      - piper_models:/app/models
+      - ./piper-service/config.yaml:/app/config.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '1'
+        memory: 1G
+
+  # Voice processing and API orchestrator
+  voice-orchestrator:
+    image: zentoria/voice-orchestrator:latest
+    container_name: zentoria-voice-orchestrator
+    hostname: voice-orchestrator
+    restart: unless-stopped
+    ports:
+      - "8007:8000"
+    environment:
+      WHISPER_URL: http://whisper-service:8000
+      PIPER_URL: http://piper-service:8000
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/9
+      DATABASE_URL: postgresql://${DB_USER:-zentoria}:${DB_PASSWORD:-changeme}@pgbouncer:6432/zentoria_core
+      LOG_LEVEL: ${VOICE_LOG_LEVEL:-info}
+      MAX_AUDIO_DURATION: ${MAX_AUDIO_DURATION:-300}
+      SUPPORTED_FORMATS: ${VOICE_SUPPORTED_FORMATS:-wav,mp3,flac,ogg}
+      LANGUAGE_DETECTION: ${VOICE_LANGUAGE_DETECTION:-true}
+    volumes:
+      - voice_data:/app/data
+      - ./voice-orchestrator/config.yaml:/app/config.yaml:ro
+    depends_on:
+      whisper-service:
+        condition: service_healthy
+      piper-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 1G
+      reservations:
+        cpus: '1'
+        memory: 512M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  whisper_models:
+    name: zentoria_whisper_models
+    driver: local
+  piper_models:
+    name: zentoria_piper_models
+    driver: local
+  voice_data:
+    name: zentoria_voice_data
+    driver: local

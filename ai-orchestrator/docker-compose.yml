@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zentoria-ai-orchestrator
+    ports:
+      - "8080:8080"
+    environment:
+      # Application
+      - APP_NAME=Zentoria AI Orchestrator
+      - DEBUG=false
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8080
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+
+      # Ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_CHAT_MODEL=llama3.2:8b
+      - OLLAMA_CODE_MODEL=codellama:7b
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - OLLAMA_TIMEOUT=120
+
+      # Qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION=zentoria_docs
+
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      - REDIS_DB=0
+      - REDIS_CONVERSATION_TTL=3600
+
+      # MCP Backend
+      - MCP_BASE_URL=http://10.10.40.101:4000
+
+      # CORS
+      - CORS_ORIGINS=["*"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - zentoria-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: zentoria-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - zentoria-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: zentoria-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - zentoria-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis-data:
+  qdrant-data:
+
+networks:
+  zentoria-network:
+    driver: bridge

@@ -1,0 +1,350 @@
+# AlertManager Configuration for Zentoria Personal Edition
+# Version: 1.0.0
+# Container: 406 (logs/monitoring)
+
+global:
+  # SMTP configuration for email alerts
+  smtp_smarthost: 'smtp.zentoria.local:587'
+  smtp_from: 'alertmanager@zentoria.local'
+  smtp_auth_username: 'alertmanager@zentoria.local'
+  smtp_auth_password: '${SMTP_PASSWORD}'
+  smtp_require_tls: true
+
+  # Slack configuration
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+  # Default resolve timeout
+  resolve_timeout: 5m
+
+  # HTTP configuration for webhooks
+  http_config:
+    follow_redirects: true
+    enable_http2: true
+
+# =============================================================================
+# TEMPLATES
+# =============================================================================
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# =============================================================================
+# ROUTE CONFIGURATION
+# =============================================================================
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+
+  # Group alerts by these labels
+  group_by: ['alertname', 'severity', 'container']
+
+  # How long to wait before sending initial notification
+  group_wait: 30s
+
+  # How long to wait before sending updated notification
+  group_interval: 5m
+
+  # How long to wait before resending notification
+  repeat_interval: 4h
+
+  # Child routes for specific alert handling
+  routes:
+    # ==========================================================================
+    # CRITICAL ALERTS - Immediate notification
+    # ==========================================================================
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 1h
+      continue: true
+      routes:
+        # Security-critical alerts
+        - match_re:
+            alertname: 'VaultSealed|AuthServiceDown|HighFailedLoginRate|WAFHighBlockRate'
+          receiver: 'security-alerts'
+          group_wait: 0s
+          repeat_interval: 15m
+
+        # Database critical alerts
+        - match_re:
+            alertname: 'PostgreSQLDown|PostgreSQLConnectionsExhausted'
+          receiver: 'database-alerts'
+          group_wait: 0s
+          repeat_interval: 15m
+
+    # ==========================================================================
+    # WARNING ALERTS - Standard notification
+    # ==========================================================================
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 5m
+      group_interval: 15m
+      repeat_interval: 6h
+
+    # ==========================================================================
+    # SLO ALERTS - Business impact
+    # ==========================================================================
+    - match:
+        category: slo
+      receiver: 'slo-alerts'
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 2h
+
+    # ==========================================================================
+    # BACKUP ALERTS
+    # ==========================================================================
+    - match:
+        category: backup
+      receiver: 'backup-alerts'
+      group_wait: 10m
+      group_interval: 30m
+      repeat_interval: 12h
+
+    # ==========================================================================
+    # AI/ML SERVICE ALERTS
+    # ==========================================================================
+    - match:
+        tier: ai
+      receiver: 'ai-alerts'
+      group_wait: 2m
+      group_interval: 10m
+      repeat_interval: 4h
+
+    # ==========================================================================
+    # CERTIFICATE EXPIRY ALERTS
+    # ==========================================================================
+    - match_re:
+        alertname: 'Certificate.*'
+      receiver: 'certificate-alerts'
+      group_wait: 1h
+      group_interval: 6h
+      repeat_interval: 24h
+
+# =============================================================================
+# INHIBITION RULES
+# =============================================================================
+inhibit_rules:
+  # If service is down, suppress all other alerts for that service
+  - source_match:
+      alertname: 'ServiceDown'
+    target_match_re:
+      alertname: '.*'
+    equal: ['container', 'instance']
+
+  # If critical, suppress warning for same issue
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'container']
+
+  # If PostgreSQL is down, suppress all database-related alerts
+  - source_match:
+      alertname: 'PostgreSQLDown'
+    target_match_re:
+      alertname: 'PostgreSQL.*'
+    equal: []
+
+  # If Redis is down, suppress all cache-related alerts
+  - source_match:
+      alertname: 'RedisDown'
+    target_match_re:
+      alertname: 'Redis.*'
+    equal: []
+
+  # If Ollama is down, suppress all AI service alerts
+  - source_match:
+      alertname: 'OllamaDown'
+    target_match:
+      tier: 'ai'
+    equal: []
+
+  # If disk is critical, suppress warning
+  - source_match:
+      alertname: 'DiskSpaceCritical'
+    target_match:
+      alertname: 'DiskSpaceLow'
+    equal: ['instance']
+
+  # If error budget exhausted, suppress burn rate alert
+  - source_match:
+      alertname: 'ErrorBudgetExhausted'
+    target_match:
+      alertname: 'ErrorBudgetBurningFast'
+    equal: []
+
+# =============================================================================
+# RECEIVERS
+# =============================================================================
+receivers:
+  # ===========================================================================
+  # DEFAULT RECEIVER
+  # ===========================================================================
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[Zentoria] {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
+        html: '{{ template "email.html" . }}'
+
+  # ===========================================================================
+  # CRITICAL ALERTS
+  # ===========================================================================
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local,oncall@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }} - {{ .GroupLabels.container }}'
+          X-Priority: '1'
+        html: '{{ template "email.html" . }}'
+    slack_configs:
+      - channel: '#alerts-critical'
+        send_resolved: true
+        icon_emoji: ':rotating_light:'
+        title: '{{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+    webhook_configs:
+      - url: 'http://n8n:5678/webhook/alertmanager-critical'
+        send_resolved: true
+        max_alerts: 10
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        send_resolved: true
+        severity: critical
+        description: '{{ .GroupLabels.alertname }}'
+
+  # ===========================================================================
+  # SECURITY ALERTS
+  # ===========================================================================
+  - name: 'security-alerts'
+    email_configs:
+      - to: 'security@zentoria.local,admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[SECURITY] {{ .GroupLabels.alertname }}'
+          X-Priority: '1'
+    slack_configs:
+      - channel: '#alerts-security'
+        send_resolved: true
+        icon_emoji: ':shield:'
+        title: 'Security Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+        color: 'danger'
+    webhook_configs:
+      - url: 'http://n8n:5678/webhook/alertmanager-security'
+        send_resolved: true
+
+  # ===========================================================================
+  # DATABASE ALERTS
+  # ===========================================================================
+  - name: 'database-alerts'
+    email_configs:
+      - to: 'dba@zentoria.local,admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[DATABASE] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-database'
+        send_resolved: true
+        icon_emoji: ':floppy_disk:'
+        title: 'Database Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+    webhook_configs:
+      - url: 'http://n8n:5678/webhook/alertmanager-database'
+        send_resolved: true
+
+  # ===========================================================================
+  # WARNING ALERTS
+  # ===========================================================================
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[WARNING] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-warning'
+        send_resolved: true
+        icon_emoji: ':warning:'
+        title: 'Warning: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+        color: 'warning'
+
+  # ===========================================================================
+  # SLO ALERTS
+  # ===========================================================================
+  - name: 'slo-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[SLO] {{ .GroupLabels.alertname }} - Error Budget Impact'
+    slack_configs:
+      - channel: '#alerts-slo'
+        send_resolved: true
+        icon_emoji: ':chart_with_downwards_trend:'
+        title: 'SLO Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+    webhook_configs:
+      - url: 'http://n8n:5678/webhook/alertmanager-slo'
+        send_resolved: true
+
+  # ===========================================================================
+  # BACKUP ALERTS
+  # ===========================================================================
+  - name: 'backup-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[BACKUP] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-backup'
+        send_resolved: true
+        icon_emoji: ':package:'
+        title: 'Backup Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+
+  # ===========================================================================
+  # AI SERVICE ALERTS
+  # ===========================================================================
+  - name: 'ai-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[AI] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-ai'
+        send_resolved: true
+        icon_emoji: ':robot_face:'
+        title: 'AI Service Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+
+  # ===========================================================================
+  # CERTIFICATE ALERTS
+  # ===========================================================================
+  - name: 'certificate-alerts'
+    email_configs:
+      - to: 'admin@zentoria.local'
+        send_resolved: true
+        headers:
+          Subject: '[CERTIFICATE] {{ .GroupLabels.alertname }} - {{ .GroupLabels.instance }}'
+    slack_configs:
+      - channel: '#alerts-certificates'
+        send_resolved: true
+        icon_emoji: ':lock:'
+        title: 'Certificate Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.text" . }}'
+
+  # ===========================================================================
+  # NULL RECEIVER (for silencing)
+  # ===========================================================================
+  - name: 'null'

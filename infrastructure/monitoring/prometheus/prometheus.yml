@@ -1,0 +1,344 @@
+# Prometheus Configuration for Zentoria Personal Edition
+# Version: 1.0.0
+# Container: 406 (logs/monitoring)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    environment: 'personal'
+    cluster: 'zentoria-pe'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# Rule files
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+# Scrape configurations for all 17 Zentoria containers
+scrape_configs:
+  # =============================================================================
+  # PROMETHEUS SELF-MONITORING
+  # =============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          container: 'logs'
+          vmid: '406'
+          service: 'prometheus'
+
+  # =============================================================================
+  # CORE APPLICATION SERVICES
+  # =============================================================================
+
+  # Frontend (400) - Next.js application
+  - job_name: 'frontend'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['frontend:3000']
+        labels:
+          container: 'frontend'
+          vmid: '400'
+          service: 'nextjs'
+          tier: 'presentation'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'frontend'
+
+  # Backend API (401) - FastAPI/Node.js
+  - job_name: 'backend'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:4000']
+        labels:
+          container: 'backend'
+          vmid: '401'
+          service: 'api'
+          tier: 'application'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'backend'
+
+  # n8n Workflow Automation (402)
+  - job_name: 'n8n'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['n8n:5678']
+        labels:
+          container: 'n8n'
+          vmid: '402'
+          service: 'workflow'
+          tier: 'automation'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'n8n'
+
+  # =============================================================================
+  # SECURITY SERVICES
+  # =============================================================================
+
+  # Vault Secret Management (403)
+  - job_name: 'vault'
+    metrics_path: /v1/sys/metrics
+    params:
+      format: ['prometheus']
+    bearer_token_file: /etc/prometheus/vault_token
+    static_configs:
+      - targets: ['vault:8200']
+        labels:
+          container: 'vault'
+          vmid: '403'
+          service: 'secrets'
+          tier: 'security'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'vault'
+
+  # Authentik/Auth Service (409)
+  - job_name: 'auth'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['auth:9000']
+        labels:
+          container: 'auth'
+          vmid: '409'
+          service: 'authentication'
+          tier: 'security'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'auth'
+
+  # WAF - Web Application Firewall (423)
+  - job_name: 'waf'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['waf:6060']
+        labels:
+          container: 'waf'
+          vmid: '423'
+          service: 'firewall'
+          tier: 'security'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'waf'
+
+  # =============================================================================
+  # DATA SERVICES
+  # =============================================================================
+
+  # PostgreSQL Database (404) - via postgres_exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['db:9187']
+        labels:
+          container: 'db'
+          vmid: '404'
+          service: 'postgresql'
+          tier: 'data'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'postgres'
+
+  # Redis Cache (410) - via redis_exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+        labels:
+          container: 'redis'
+          vmid: '410'
+          service: 'cache'
+          tier: 'data'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'redis'
+
+  # MinIO File Storage (407)
+  - job_name: 'minio'
+    metrics_path: /minio/v2/metrics/cluster
+    scheme: http
+    static_configs:
+      - targets: ['files:9000']
+        labels:
+          container: 'files'
+          vmid: '407'
+          service: 'storage'
+          tier: 'data'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'minio'
+
+  # =============================================================================
+  # AI/ML SERVICES
+  # =============================================================================
+
+  # Ollama AI (405)
+  - job_name: 'ollama'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ai:5000']
+        labels:
+          container: 'ai'
+          vmid: '405'
+          service: 'llm'
+          tier: 'ai'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'ollama'
+
+  # OCR Service (412)
+  - job_name: 'ocr'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['ocr:8000']
+        labels:
+          container: 'ocr'
+          vmid: '412'
+          service: 'ocr'
+          tier: 'ai'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'ocr'
+
+  # Voice/STT Service (413)
+  - job_name: 'voice'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['voice:9300']
+        labels:
+          container: 'voice'
+          vmid: '413'
+          service: 'stt'
+          tier: 'ai'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'voice'
+
+  # Embeddings Service (419)
+  - job_name: 'embeddings'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['embeddings:8100']
+        labels:
+          container: 'embeddings'
+          vmid: '419'
+          service: 'embeddings'
+          tier: 'ai'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'embeddings'
+
+  # =============================================================================
+  # INFRASTRUCTURE SERVICES
+  # =============================================================================
+
+  # Nginx Proxy (408) - via nginx_exporter
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['proxy:9113']
+        labels:
+          container: 'proxy'
+          vmid: '408'
+          service: 'proxy'
+          tier: 'infrastructure'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'nginx'
+
+  # Backup Service (416)
+  - job_name: 'backup'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backup:8400']
+        labels:
+          container: 'backup'
+          vmid: '416'
+          service: 'backup'
+          tier: 'infrastructure'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'backup'
+
+  # Documentation Service (418)
+  - job_name: 'docs'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['docs:3002']
+        labels:
+          container: 'docs'
+          vmid: '418'
+          service: 'documentation'
+          tier: 'infrastructure'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'docs'
+
+  # =============================================================================
+  # NODE EXPORTERS (System Metrics)
+  # =============================================================================
+
+  # Node exporters for each container (if deployed)
+  - job_name: 'node'
+    static_configs:
+      - targets:
+          - 'frontend:9100'
+          - 'backend:9100'
+          - 'n8n:9100'
+          - 'vault:9100'
+          - 'db:9100'
+          - 'ai:9100'
+          - 'logs:9100'
+          - 'files:9100'
+          - 'proxy:9100'
+          - 'auth:9100'
+          - 'redis:9100'
+          - 'ocr:9100'
+          - 'voice:9100'
+          - 'backup:9100'
+          - 'docs:9100'
+          - 'embeddings:9100'
+          - 'waf:9100'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+):.*'
+        target_label: instance
+        replacement: '${1}'
+
+  # =============================================================================
+  # CADVISOR (Container Metrics)
+  # =============================================================================
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    metric_relabel_configs:
+      # Only keep metrics for Zentoria containers
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: 'zentoria.*'
+        action: keep

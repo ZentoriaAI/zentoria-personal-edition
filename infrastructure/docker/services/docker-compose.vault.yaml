@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # HashiCorp Vault for secrets management
+  vault:
+    image: vault:latest
+    container_name: zentoria-vault
+    hostname: vault
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_API_ADDR: http://vault:8200
+      VAULT_LOG_LEVEL: ${VAULT_LOG_LEVEL:-info}
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./vault/config:/vault/config
+      - vault_data:/vault/data
+      - vault_logs:/vault/logs
+    networks:
+      - zentoria
+    command: server -config=/vault/config/vault.hcl
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/v1/sys/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  vault_data:
+    name: zentoria_vault_data
+    driver: local
+  vault_logs:
+    name: zentoria_vault_logs
+    driver: local

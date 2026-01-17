@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # n8n main instance
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: zentoria-n8n
+    hostname: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      DB_TYPE: ${N8N_DB_TYPE:-postgresdb}
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-n8n}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:-changeme}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+      EXECUTION_MODE: ${N8N_EXECUTION_MODE:-queue}
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
+      QUEUE_BULL_REDIS_DB: 1
+      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
+      N8N_JWT_AUDIENCE: ${N8N_JWT_AUDIENCE:-n8n}
+      N8N_JWT_ISSUER: ${N8N_JWT_ISSUER:-n8n}
+      N8N_JWT_SECRET: ${N8N_JWT_SECRET:-changeme}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-changeme}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflow:/home/node/.n8n/workflows:ro
+      - ./n8n/custom:/home/node/.n8n/custom:ro
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 1G
+      reservations:
+        cpus: '1'
+        memory: 512M
+
+  # n8n worker for queue mode
+  n8n-worker:
+    image: n8nio/n8n:latest
+    container_name: zentoria-n8n-worker
+    hostname: n8n-worker
+    restart: unless-stopped
+    environment:
+      DB_TYPE: ${N8N_DB_TYPE:-postgresdb}
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${N8N_DB_NAME:-n8n}
+      DB_POSTGRESDB_USER: ${N8N_DB_USER:-n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD:-changeme}
+      EXECUTION_MODE: worker
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
+      QUEUE_BULL_REDIS_DB: 1
+      WORKER_TYPE: ${WORKER_TYPE:-webhook,trigger}
+      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-changeme}
+    volumes:
+      - n8n_worker_data:/home/node/.n8n
+    depends_on:
+      - n8n
+      - postgres
+      - redis
+    networks:
+      - zentoria
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  n8n_data:
+    name: zentoria_n8n_data
+    driver: local
+  n8n_worker_data:
+    name: zentoria_n8n_worker_data
+    driver: local

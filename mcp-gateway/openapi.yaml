@@ -1,0 +1,1102 @@
+openapi: 3.1.0
+info:
+  title: Zentoria MCP Core API Gateway
+  version: 1.0.0
+  description: |
+    Central API Gateway for Zentoria Personal Edition.
+    Handles AI command processing, file management, workflow orchestration,
+    and service integration.
+  contact:
+    name: Zentoria Support
+    email: support@zentoria.ai
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Development server
+  - url: https://mcp.zentoria.local/api/v1
+    description: Production server (internal)
+
+tags:
+  - name: MCP
+    description: AI command processing and MCP operations
+  - name: Files
+    description: File upload and management
+  - name: Auth
+    description: Authentication and API key management
+  - name: Workflows
+    description: n8n workflow triggers
+  - name: Health
+    description: Service health and readiness
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check endpoint
+      description: Returns service health status and dependency states
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/ready:
+    get:
+      operationId: getReadiness
+      summary: Readiness check
+      description: Checks if all dependencies are ready
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Service is not ready
+
+  /mcp/command:
+    post:
+      operationId: processCommand
+      summary: Process AI command
+      description: |
+        Sends a command to the AI Orchestrator for processing.
+        Supports text commands, file references, and context injection.
+      tags: [MCP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandRequest'
+            examples:
+              simple:
+                summary: Simple text command
+                value:
+                  command: "Summarize the uploaded document"
+                  sessionId: "sess_abc123"
+              withContext:
+                summary: Command with context
+                value:
+                  command: "Create a report based on this data"
+                  sessionId: "sess_abc123"
+                  context:
+                    files: ["file_xyz789"]
+                    previousMessages: 5
+                  options:
+                    model: "claude-3-5-sonnet"
+                    maxTokens: 4096
+      responses:
+        '200':
+          description: Command processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResponse'
+        '202':
+          description: Command accepted for async processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncCommandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp/upload:
+    post:
+      operationId: uploadFile
+      summary: Upload file for AI processing
+      description: |
+        Uploads a file to MinIO storage for use in AI commands.
+        Supports streaming uploads for large files.
+      tags: [MCP, Files]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+                purpose:
+                  type: string
+                  enum: [ai-input, attachment, backup]
+                  default: ai-input
+                  description: Purpose of the uploaded file
+                metadata:
+                  type: string
+                  description: JSON string with custom metadata
+            encoding:
+              file:
+                contentType: '*/*'
+      responses:
+        '201':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /mcp/files:
+    get:
+      operationId: listFiles
+      summary: List uploaded files
+      description: Returns paginated list of files for the authenticated user
+      tags: [Files]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: purpose
+          in: query
+          schema:
+            type: string
+            enum: [ai-input, attachment, backup]
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: File list retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /mcp/files/{fileId}:
+    get:
+      operationId: getFile
+      summary: Get file metadata
+      description: Returns metadata for a specific file
+      tags: [Files]
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^file_[a-zA-Z0-9]+$'
+      responses:
+        '200':
+          description: File metadata retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteFile
+      summary: Delete a file
+      description: Permanently deletes a file from storage
+      tags: [Files]
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^file_[a-zA-Z0-9]+$'
+      responses:
+        '204':
+          description: File deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /mcp/files/{fileId}/download:
+    get:
+      operationId: downloadFile
+      summary: Download a file
+      description: Returns the file content as a stream
+      tags: [Files]
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^file_[a-zA-Z0-9]+$'
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /mcp/create-key:
+    post:
+      operationId: createApiKey
+      summary: Create API key
+      description: |
+        Creates a new API key with specified scopes.
+        Only users with admin scope can create keys.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /mcp/keys:
+    get:
+      operationId: listApiKeys
+      summary: List API keys
+      description: Returns all API keys for the authenticated user
+      tags: [Auth]
+      responses:
+        '200':
+          description: API key list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+
+  /mcp/keys/{keyId}:
+    delete:
+      operationId: revokeApiKey
+      summary: Revoke API key
+      description: Permanently revokes an API key
+      tags: [Auth]
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^key_[a-zA-Z0-9]+$'
+      responses:
+        '204':
+          description: API key revoked
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /mcp/email:
+    post:
+      operationId: sendEmail
+      summary: Send email
+      description: Sends an email through the configured SMTP service
+      tags: [MCP]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+      responses:
+        '200':
+          description: Email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /mcp/workflow:
+    post:
+      operationId: triggerWorkflow
+      summary: Trigger n8n workflow
+      description: Triggers a workflow in n8n with the provided payload
+      tags: [Workflows]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerWorkflowRequest'
+      responses:
+        '200':
+          description: Workflow triggered synchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResponse'
+        '202':
+          description: Workflow triggered asynchronously
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncWorkflowResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /mcp/workflow/{executionId}:
+    get:
+      operationId: getWorkflowStatus
+      summary: Get workflow execution status
+      description: Returns the status of a workflow execution
+      tags: [Workflows]
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Workflow status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from Auth Service (409)
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key with format 'znt_live_xxx' or 'znt_test_xxx'
+
+  schemas:
+    # Health Schemas
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          example: "1.0.0"
+        uptime:
+          type: integer
+          description: Uptime in seconds
+        dependencies:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/DependencyHealth'
+
+    DependencyHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        latencyMs:
+          type: integer
+        message:
+          type: string
+
+    ReadinessResponse:
+      type: object
+      required:
+        - ready
+      properties:
+        ready:
+          type: boolean
+        checks:
+          type: object
+          additionalProperties:
+            type: boolean
+
+    # Command Schemas
+    CommandRequest:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          minLength: 1
+          maxLength: 32000
+          description: The AI command to process
+        sessionId:
+          type: string
+          pattern: '^sess_[a-zA-Z0-9]+$'
+          description: Session ID for conversation context
+        context:
+          type: object
+          properties:
+            files:
+              type: array
+              items:
+                type: string
+              maxItems: 10
+              description: File IDs to include as context
+            previousMessages:
+              type: integer
+              minimum: 0
+              maximum: 50
+              default: 10
+              description: Number of previous messages to include
+            systemPrompt:
+              type: string
+              maxLength: 4000
+              description: Custom system prompt override
+            variables:
+              type: object
+              additionalProperties:
+                type: string
+              description: Variables for template substitution
+        options:
+          type: object
+          properties:
+            model:
+              type: string
+              enum: [claude-3-5-sonnet, claude-3-opus, gpt-4-turbo, gpt-4o]
+              default: claude-3-5-sonnet
+            maxTokens:
+              type: integer
+              minimum: 1
+              maximum: 16384
+              default: 4096
+            temperature:
+              type: number
+              minimum: 0
+              maximum: 2
+              default: 0.7
+            stream:
+              type: boolean
+              default: false
+              description: Stream response via WebSocket
+            async:
+              type: boolean
+              default: false
+              description: Process asynchronously
+
+    CommandResponse:
+      type: object
+      required:
+        - id
+        - content
+        - model
+        - usage
+      properties:
+        id:
+          type: string
+          pattern: '^cmd_[a-zA-Z0-9]+$'
+        content:
+          type: string
+        model:
+          type: string
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+        sessionId:
+          type: string
+        finishReason:
+          type: string
+          enum: [stop, max_tokens, error]
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AsyncCommandResponse:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          pattern: '^cmd_[a-zA-Z0-9]+$'
+        status:
+          type: string
+          enum: [queued, processing]
+        estimatedCompletionMs:
+          type: integer
+        pollingUrl:
+          type: string
+          format: uri
+        websocketUrl:
+          type: string
+          format: uri
+
+    TokenUsage:
+      type: object
+      properties:
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
+        totalTokens:
+          type: integer
+
+    # File Schemas
+    FileUploadResponse:
+      type: object
+      required:
+        - id
+        - filename
+        - size
+        - mimeType
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^file_[a-zA-Z0-9]+$'
+        filename:
+          type: string
+        size:
+          type: integer
+          description: File size in bytes
+        mimeType:
+          type: string
+        purpose:
+          type: string
+          enum: [ai-input, attachment, backup]
+        checksum:
+          type: string
+          description: SHA-256 checksum
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the file will be auto-deleted (if applicable)
+
+    FileListResponse:
+      type: object
+      required:
+        - files
+        - pagination
+      properties:
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileMetadata'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    FileMetadata:
+      type: object
+      required:
+        - id
+        - filename
+        - size
+        - mimeType
+        - createdAt
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+        mimeType:
+          type: string
+        purpose:
+          type: string
+        checksum:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    # API Key Schemas
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+        - scopes
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Human-readable name for the key
+        scopes:
+          type: array
+          items:
+            type: string
+            enum:
+              - files.read
+              - files.write
+              - files.delete
+              - ai.chat
+              - ai.complete
+              - workflows.trigger
+              - workflows.read
+              - email.send
+              - keys.manage
+              - admin
+          minItems: 1
+          description: Permissions granted to this key
+        expiresIn:
+          type: string
+          pattern: '^(\d+)(d|w|m|y)$'
+          description: 'Expiration period (e.g., "30d", "1y")'
+        rateLimit:
+          type: object
+          properties:
+            requestsPerMinute:
+              type: integer
+              minimum: 1
+              maximum: 1000
+            requestsPerDay:
+              type: integer
+              minimum: 1
+              maximum: 100000
+
+    ApiKeyResponse:
+      type: object
+      required:
+        - id
+        - key
+        - name
+        - scopes
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^key_[a-zA-Z0-9]+$'
+        key:
+          type: string
+          description: The actual API key (only shown once)
+          example: "znt_live_sk_abc123xyz789"
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    ApiKeyListResponse:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              scopes:
+                type: array
+                items:
+                  type: string
+              lastUsedAt:
+                type: string
+                format: date-time
+              createdAt:
+                type: string
+                format: date-time
+              expiresAt:
+                type: string
+                format: date-time
+
+    # Email Schemas
+    SendEmailRequest:
+      type: object
+      required:
+        - to
+        - subject
+      properties:
+        to:
+          oneOf:
+            - type: string
+              format: email
+            - type: array
+              items:
+                type: string
+                format: email
+              maxItems: 50
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+          maxItems: 50
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+          maxItems: 50
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 998
+        body:
+          type: string
+          maxLength: 1000000
+          description: Plain text body
+        htmlBody:
+          type: string
+          maxLength: 2000000
+          description: HTML body
+        attachments:
+          type: array
+          items:
+            type: string
+            description: File IDs to attach
+          maxItems: 10
+        replyTo:
+          type: string
+          format: email
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+
+    EmailResponse:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          pattern: '^email_[a-zA-Z0-9]+$'
+        status:
+          type: string
+          enum: [sent, queued, failed]
+        messageId:
+          type: string
+          description: SMTP message ID
+        sentAt:
+          type: string
+          format: date-time
+
+    # Workflow Schemas
+    TriggerWorkflowRequest:
+      type: object
+      required:
+        - workflowId
+      properties:
+        workflowId:
+          type: string
+          description: n8n workflow ID or name
+        payload:
+          type: object
+          additionalProperties: true
+          description: Data to pass to the workflow
+        async:
+          type: boolean
+          default: true
+          description: Run workflow asynchronously
+        webhookPath:
+          type: string
+          description: Webhook path if triggering via webhook
+
+    WorkflowResponse:
+      type: object
+      required:
+        - executionId
+        - status
+      properties:
+        executionId:
+          type: string
+        status:
+          type: string
+          enum: [success, error]
+        data:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    AsyncWorkflowResponse:
+      type: object
+      required:
+        - executionId
+        - status
+      properties:
+        executionId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running]
+        statusUrl:
+          type: string
+          format: uri
+
+    WorkflowStatusResponse:
+      type: object
+      required:
+        - executionId
+        - status
+      properties:
+        executionId:
+          type: string
+        workflowId:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, success, error, cancelled]
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+        currentNode:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    # Error Schemas
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
+            details:
+              type: object
+              additionalProperties: true
+            requestId:
+              type: string
+              description: Request ID for debugging
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                validationErrors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      field:
+                        type: string
+                      message:
+                        type: string
+                      code:
+                        type: string
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or expired authentication token
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions for this operation
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: The requested resource was not found
+
+    RateLimited:
+      description: Too many requests
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Request limit per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when window resets
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds until retry is allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests. Please retry after 60 seconds.
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred
+              requestId: req_abc123

@@ -1,0 +1,542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Zentoria Personal Edition - Qdrant Collection Schemas",
+  "description": "Collection definitions for Qdrant vector database (Container 419)",
+  "version": "1.0.0",
+  "collections": {
+    "documents": {
+      "description": "All documents embeddings for RAG (nomic-embed-text)",
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      },
+      "optimizers_config": {
+        "default_segment_number": 2,
+        "memmap_threshold": 20000,
+        "indexing_threshold": 20000,
+        "flush_interval_sec": 5,
+        "max_optimization_threads": 2
+      },
+      "replication_factor": 1,
+      "write_consistency_factor": 1,
+      "on_disk_payload": true,
+      "hnsw_config": {
+        "m": 16,
+        "ef_construct": 100,
+        "full_scan_threshold": 10000,
+        "max_indexing_threads": 0,
+        "on_disk": true
+      },
+      "payload_schema": {
+        "file_id": {
+          "type": "uuid",
+          "indexed": true,
+          "description": "Reference to files.items in PostgreSQL"
+        },
+        "chunk_index": {
+          "type": "integer",
+          "indexed": true,
+          "description": "Chunk position in document"
+        },
+        "total_chunks": {
+          "type": "integer",
+          "indexed": false,
+          "description": "Total chunks in document"
+        },
+        "content": {
+          "type": "text",
+          "indexed": false,
+          "description": "Actual text content of the chunk"
+        },
+        "content_hash": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "SHA-256 hash for deduplication"
+        },
+        "document_title": {
+          "type": "text",
+          "indexed": true,
+          "description": "Title of the source document"
+        },
+        "section_title": {
+          "type": "text",
+          "indexed": true,
+          "description": "Section/chapter title"
+        },
+        "page_number": {
+          "type": "integer",
+          "indexed": true,
+          "description": "Page number in source document"
+        },
+        "file_name": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Original file name"
+        },
+        "file_type": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "File MIME type or extension"
+        },
+        "char_start": {
+          "type": "integer",
+          "indexed": false,
+          "description": "Start position in original document"
+        },
+        "char_end": {
+          "type": "integer",
+          "indexed": false,
+          "description": "End position in original document"
+        },
+        "token_count": {
+          "type": "integer",
+          "indexed": true,
+          "description": "Number of tokens in chunk"
+        },
+        "created_at": {
+          "type": "datetime",
+          "indexed": true,
+          "description": "When embedding was created"
+        },
+        "tags": {
+          "type": "keyword[]",
+          "indexed": true,
+          "description": "Document tags for filtering"
+        }
+      },
+      "sample_queries": [
+        {
+          "name": "semantic_search",
+          "description": "Find similar document chunks",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "limit": 10,
+            "score_threshold": 0.7
+          }
+        },
+        {
+          "name": "filtered_search",
+          "description": "Search within specific file types",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "file_type", "match": { "value": "pdf" } }
+              ]
+            },
+            "limit": 10
+          }
+        }
+      ]
+    },
+
+    "chat_history": {
+      "description": "Conversation context embeddings (nomic-embed-text)",
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      },
+      "optimizers_config": {
+        "default_segment_number": 2,
+        "memmap_threshold": 10000,
+        "indexing_threshold": 10000,
+        "flush_interval_sec": 10,
+        "max_optimization_threads": 1
+      },
+      "replication_factor": 1,
+      "write_consistency_factor": 1,
+      "on_disk_payload": true,
+      "hnsw_config": {
+        "m": 16,
+        "ef_construct": 64,
+        "full_scan_threshold": 5000,
+        "max_indexing_threads": 0,
+        "on_disk": true
+      },
+      "payload_schema": {
+        "conversation_id": {
+          "type": "uuid",
+          "indexed": true,
+          "description": "Reference to mcp.conversations in PostgreSQL"
+        },
+        "message_id": {
+          "type": "uuid",
+          "indexed": true,
+          "description": "Reference to mcp.messages in PostgreSQL"
+        },
+        "user_id": {
+          "type": "uuid",
+          "indexed": true,
+          "description": "Reference to core.users in PostgreSQL"
+        },
+        "role": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Message role: user, assistant, system"
+        },
+        "content": {
+          "type": "text",
+          "indexed": false,
+          "description": "Message content"
+        },
+        "message_timestamp": {
+          "type": "datetime",
+          "indexed": true,
+          "description": "Original message timestamp"
+        },
+        "conversation_title": {
+          "type": "text",
+          "indexed": true,
+          "description": "Conversation title for context"
+        },
+        "model": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "AI model used"
+        },
+        "token_count": {
+          "type": "integer",
+          "indexed": false,
+          "description": "Token count of message"
+        }
+      },
+      "sample_queries": [
+        {
+          "name": "find_relevant_context",
+          "description": "Find relevant past conversations for context",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "user_id", "match": { "value": "user-uuid" } }
+              ]
+            },
+            "limit": 20,
+            "score_threshold": 0.6
+          }
+        },
+        {
+          "name": "same_conversation_context",
+          "description": "Find similar messages in same conversation",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "conversation_id", "match": { "value": "conv-uuid" } }
+              ]
+            },
+            "limit": 10
+          }
+        }
+      ]
+    },
+
+    "code": {
+      "description": "Code snippets embeddings (codellama)",
+      "vectors": {
+        "size": 4096,
+        "distance": "Cosine"
+      },
+      "optimizers_config": {
+        "default_segment_number": 2,
+        "memmap_threshold": 5000,
+        "indexing_threshold": 5000,
+        "flush_interval_sec": 10,
+        "max_optimization_threads": 2
+      },
+      "replication_factor": 1,
+      "write_consistency_factor": 1,
+      "on_disk_payload": true,
+      "hnsw_config": {
+        "m": 24,
+        "ef_construct": 128,
+        "full_scan_threshold": 5000,
+        "max_indexing_threads": 0,
+        "on_disk": true
+      },
+      "payload_schema": {
+        "file_id": {
+          "type": "uuid",
+          "indexed": true,
+          "description": "Reference to files.items in PostgreSQL"
+        },
+        "repository": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Git repository URL or name"
+        },
+        "file_path": {
+          "type": "text",
+          "indexed": true,
+          "description": "Path within repository"
+        },
+        "language": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Programming language"
+        },
+        "content": {
+          "type": "text",
+          "indexed": false,
+          "description": "Code content"
+        },
+        "content_hash": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "SHA-256 hash for deduplication"
+        },
+        "function_name": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Function or method name"
+        },
+        "class_name": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Class or type name"
+        },
+        "module_name": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Module or namespace"
+        },
+        "line_start": {
+          "type": "integer",
+          "indexed": false,
+          "description": "Starting line number"
+        },
+        "line_end": {
+          "type": "integer",
+          "indexed": false,
+          "description": "Ending line number"
+        },
+        "imports": {
+          "type": "keyword[]",
+          "indexed": true,
+          "description": "List of imports/dependencies"
+        },
+        "docstring": {
+          "type": "text",
+          "indexed": true,
+          "description": "Documentation string"
+        },
+        "created_at": {
+          "type": "datetime",
+          "indexed": true,
+          "description": "When embedding was created"
+        }
+      },
+      "sample_queries": [
+        {
+          "name": "semantic_code_search",
+          "description": "Find similar code by functionality",
+          "query": {
+            "vector": "[4096-dim embedding]",
+            "limit": 10,
+            "score_threshold": 0.6
+          }
+        },
+        {
+          "name": "language_filtered_search",
+          "description": "Search code by language",
+          "query": {
+            "vector": "[4096-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "language", "match": { "value": "python" } }
+              ]
+            },
+            "limit": 10
+          }
+        },
+        {
+          "name": "function_search",
+          "description": "Find similar functions",
+          "query": {
+            "vector": "[4096-dim embedding]",
+            "filter": {
+              "must_not": [
+                { "is_empty": { "key": "function_name" } }
+              ]
+            },
+            "limit": 10
+          }
+        }
+      ]
+    },
+
+    "knowledge": {
+      "description": "Wiki/docs content embeddings (nomic-embed-text)",
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      },
+      "optimizers_config": {
+        "default_segment_number": 2,
+        "memmap_threshold": 10000,
+        "indexing_threshold": 10000,
+        "flush_interval_sec": 10,
+        "max_optimization_threads": 1
+      },
+      "replication_factor": 1,
+      "write_consistency_factor": 1,
+      "on_disk_payload": true,
+      "hnsw_config": {
+        "m": 16,
+        "ef_construct": 100,
+        "full_scan_threshold": 10000,
+        "max_indexing_threads": 0,
+        "on_disk": true
+      },
+      "payload_schema": {
+        "source_type": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Source type: wiki, documentation, faq, runbook"
+        },
+        "source_id": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "External ID from source system"
+        },
+        "source_url": {
+          "type": "text",
+          "indexed": false,
+          "description": "Original URL if applicable"
+        },
+        "title": {
+          "type": "text",
+          "indexed": true,
+          "description": "Document title"
+        },
+        "content": {
+          "type": "text",
+          "indexed": false,
+          "description": "Full content"
+        },
+        "content_hash": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "SHA-256 hash for deduplication"
+        },
+        "category": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Content category"
+        },
+        "subcategory": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Content subcategory"
+        },
+        "tags": {
+          "type": "keyword[]",
+          "indexed": true,
+          "description": "Content tags"
+        },
+        "version": {
+          "type": "integer",
+          "indexed": true,
+          "description": "Content version"
+        },
+        "is_latest": {
+          "type": "bool",
+          "indexed": true,
+          "description": "Is this the latest version"
+        },
+        "author": {
+          "type": "keyword",
+          "indexed": true,
+          "description": "Content author"
+        },
+        "source_updated_at": {
+          "type": "datetime",
+          "indexed": true,
+          "description": "When source was last modified"
+        },
+        "created_at": {
+          "type": "datetime",
+          "indexed": true,
+          "description": "When embedding was created"
+        }
+      },
+      "sample_queries": [
+        {
+          "name": "knowledge_search",
+          "description": "Search knowledge base",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "is_latest", "match": { "value": true } }
+              ]
+            },
+            "limit": 10,
+            "score_threshold": 0.65
+          }
+        },
+        {
+          "name": "category_search",
+          "description": "Search within category",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "source_type", "match": { "value": "documentation" } },
+                { "key": "category", "match": { "value": "api" } },
+                { "key": "is_latest", "match": { "value": true } }
+              ]
+            },
+            "limit": 10
+          }
+        },
+        {
+          "name": "tag_search",
+          "description": "Search by tags",
+          "query": {
+            "vector": "[768-dim embedding]",
+            "filter": {
+              "must": [
+                { "key": "tags", "match": { "any": ["troubleshooting", "howto"] } }
+              ]
+            },
+            "limit": 10
+          }
+        }
+      ]
+    }
+  },
+
+  "global_config": {
+    "storage_path": "/opt/zentoria/embeddings/qdrant/storage",
+    "snapshots_path": "/opt/zentoria/embeddings/qdrant/snapshots",
+    "service": {
+      "max_request_size_mb": 32,
+      "max_workers": 4
+    },
+    "telemetry_disabled": true,
+    "log_level": "INFO"
+  },
+
+  "initialization_script": {
+    "description": "Run these curl commands to create collections on fresh Qdrant install",
+    "commands": [
+      {
+        "name": "Create documents collection",
+        "curl": "curl -X PUT 'http://localhost:6333/collections/documents' -H 'Content-Type: application/json' -d '{\"vectors\": {\"size\": 768, \"distance\": \"Cosine\"}, \"optimizers_config\": {\"default_segment_number\": 2, \"memmap_threshold\": 20000, \"indexing_threshold\": 20000}, \"hnsw_config\": {\"m\": 16, \"ef_construct\": 100, \"on_disk\": true}, \"on_disk_payload\": true}'"
+      },
+      {
+        "name": "Create chat_history collection",
+        "curl": "curl -X PUT 'http://localhost:6333/collections/chat_history' -H 'Content-Type: application/json' -d '{\"vectors\": {\"size\": 768, \"distance\": \"Cosine\"}, \"optimizers_config\": {\"default_segment_number\": 2, \"memmap_threshold\": 10000, \"indexing_threshold\": 10000}, \"hnsw_config\": {\"m\": 16, \"ef_construct\": 64, \"on_disk\": true}, \"on_disk_payload\": true}'"
+      },
+      {
+        "name": "Create code collection",
+        "curl": "curl -X PUT 'http://localhost:6333/collections/code' -H 'Content-Type: application/json' -d '{\"vectors\": {\"size\": 4096, \"distance\": \"Cosine\"}, \"optimizers_config\": {\"default_segment_number\": 2, \"memmap_threshold\": 5000, \"indexing_threshold\": 5000}, \"hnsw_config\": {\"m\": 24, \"ef_construct\": 128, \"on_disk\": true}, \"on_disk_payload\": true}'"
+      },
+      {
+        "name": "Create knowledge collection",
+        "curl": "curl -X PUT 'http://localhost:6333/collections/knowledge' -H 'Content-Type: application/json' -d '{\"vectors\": {\"size\": 768, \"distance\": \"Cosine\"}, \"optimizers_config\": {\"default_segment_number\": 2, \"memmap_threshold\": 10000, \"indexing_threshold\": 10000}, \"hnsw_config\": {\"m\": 16, \"ef_construct\": 100, \"on_disk\": true}, \"on_disk_payload\": true}'"
+      }
+    ]
+  }
+}

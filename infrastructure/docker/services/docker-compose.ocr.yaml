@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  # Paperless-ngx for document management and OCR
+  paperless-ngx:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: zentoria-paperless
+    hostname: paperless
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
+      PAPERLESS_DEBUG: ${PAPERLESS_DEBUG:-false}
+      PAPERLESS_LOGURU_LEVEL: ${PAPERLESS_LOG_LEVEL:-info}
+      PAPERLESS_DBHOST: postgres
+      PAPERLESS_DBPORT: 5432
+      PAPERLESS_DBNAME: ${PAPERLESS_DB_NAME:-paperless}
+      PAPERLESS_DBUSER: ${PAPERLESS_DB_USER:-paperless}
+      PAPERLESS_DBPASS: ${PAPERLESS_DB_PASSWORD:-changeme}
+      PAPERLESS_REDIS: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/5
+      PAPERLESS_CONSUMER_POLLING: 30
+      PAPERLESS_CONSUMER_DELETE_DUPLICATES: ${PAPERLESS_DELETE_DUPLICATES:-true}
+      PAPERLESS_TASK_WORKERS: ${PAPERLESS_TASK_WORKERS:-2}
+      PAPERLESS_THREADS_PER_WORKER: ${PAPERLESS_THREADS_PER_WORKER:-1}
+      PAPERLESS_TIME_ZONE: ${TIMEZONE:-UTC}
+      PAPERLESS_LANGUAGE: ${PAPERLESS_LANGUAGE:-en}
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
+      PAPERLESS_OCR_USER_ARGS: ${PAPERLESS_OCR_ARGS:-{}}
+      USERMAP_UID: 1000
+      USERMAP_GID: 1000
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - paperless_export:/usr/src/paperless/export
+      - paperless_consume:/usr/src/paperless/consume
+      - paperless_log:/usr/src/paperless/log
+      - ./paperless/docker-compose.override.yml:/etc/paperless/docker-compose.override.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '4'
+        memory: 2G
+      reservations:
+        cpus: '2'
+        memory: 1G
+
+  # Tesseract OCR service (optional, for advanced OCR)
+  tesseract-service:
+    image: zentoria/tesseract-service:latest
+    container_name: zentoria-tesseract
+    hostname: tesseract
+    restart: unless-stopped
+    ports:
+      - "8004:8000"
+    environment:
+      LOG_LEVEL: ${TESSERACT_LOG_LEVEL:-info}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/6
+      LANGDETECT_ENABLED: ${LANGDETECT_ENABLED:-true}
+      MIN_CONFIDENCE: ${OCR_MIN_CONFIDENCE:-0.5}
+      BATCH_PROCESSING: ${OCR_BATCH_PROCESSING:-true}
+    volumes:
+      - tesseract_data:/app/data
+      - ./tesseract-service/config.yaml:/app/config.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 1G
+      reservations:
+        cpus: '1'
+        memory: 512M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  paperless_data:
+    name: zentoria_paperless_data
+    driver: local
+  paperless_media:
+    name: zentoria_paperless_media
+    driver: local
+  paperless_export:
+    name: zentoria_paperless_export
+    driver: local
+  paperless_consume:
+    name: zentoria_paperless_consume
+    driver: local
+  paperless_log:
+    name: zentoria_paperless_log
+    driver: local
+  tesseract_data:
+    name: zentoria_tesseract_data
+    driver: local

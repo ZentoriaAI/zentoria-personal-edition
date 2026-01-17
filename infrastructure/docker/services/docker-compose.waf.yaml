@@ -1,0 +1,186 @@
+version: '3.8'
+
+services:
+  # CrowdSec for threat detection and prevention
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: zentoria-crowdsec
+    hostname: crowdsec
+    restart: unless-stopped
+    environment:
+      COLLECTIONS: crowdsecurity/linux crowdsecurity/nginx crowdsecurity/http-cve
+      BOUNCER_KEY_CUSTOM_HEIMDALL: ${CROWDSEC_BOUNCER_KEY:-}
+      DISABLE_AGENT: "false"
+      SCENARIO: ${CROWDSEC_SCENARIOS:-}
+      CUSTOM_HOSTNAME: ${CROWDSEC_HOSTNAME:-zentoria}
+    ports:
+      - "8081:8080"
+      - "6060:6060"
+    volumes:
+      - crowdsec_config:/etc/crowdsec
+      - crowdsec_data:/var/lib/crowdsec/data
+      - crowdsec_logs:/var/log/crowdsec
+      - /var/log/nginx:/var/log/nginx:ro
+      - ./crowdsec/config.yaml:/etc/crowdsec/config.yaml:ro
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+  # Bouncer for NGINX integration
+  nginx-bouncer:
+    image: crowdsecurity/nginx-bouncer:latest
+    container_name: zentoria-nginx-bouncer
+    hostname: nginx-bouncer
+    restart: unless-stopped
+    environment:
+      CROWDSEC_API_URL: http://crowdsec:8080
+      BOUNCER_API_KEY: ${NGINX_BOUNCER_KEY:-}
+      BOUNCER_LOG_LEVEL: ${BOUNCER_LOG_LEVEL:-info}
+      BOUNCER_CACHE_EXPIRATION: 5m
+      BOUNCER_CACHE_MAX_SIZE: 1000
+    volumes:
+      - nginx_bouncer_cache:/var/cache/crowdsec
+      - ./nginx-bouncer/config.conf:/etc/crowdsec/bouncers/crowdsec-nginx-bouncer.conf:ro
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+    networks:
+      - zentoria
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+  # CrowdSec Dashboard/Console
+  crowdsec-console:
+    image: crowdsecurity/crowdsec-console:latest
+    container_name: zentoria-crowdsec-console
+    hostname: crowdsec-console
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    environment:
+      CROWDSEC_API_URL: http://crowdsec:8080
+      CROWDSEC_API_KEY: ${CROWDSEC_API_KEY:-}
+      LOGLEVEL: ${CONSOLE_LOG_LEVEL:-info}
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+  # ModSecurity for advanced WAF rules
+  modsecurity-service:
+    image: zentoria/modsecurity-service:latest
+    container_name: zentoria-modsecurity
+    hostname: modsecurity
+    restart: unless-stopped
+    ports:
+      - "8009:8000"
+    environment:
+      LOG_LEVEL: ${MODSEC_LOG_LEVEL:-info}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/11
+      DATABASE_URL: postgresql://${DB_USER:-zentoria}:${DB_PASSWORD:-changeme}@pgbouncer:6432/zentoria_core
+      RULES_SOURCE: ${MODSEC_RULES:-owasp}
+      PARANOIA_LEVEL: ${MODSEC_PARANOIA_LEVEL:-1}
+      BLOCKING_MODE: ${MODSEC_BLOCKING_MODE:-DetectionOnly}
+      MAX_REQUEST_SIZE: ${MODSEC_MAX_REQUEST:-10485760}
+    volumes:
+      - modsec_rules:/app/rules
+      - modsec_data:/app/data
+      - ./modsecurity/modsecurity.conf:/app/config/modsecurity.conf:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      crowdsec:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  crowdsec_config:
+    name: zentoria_crowdsec_config
+    driver: local
+  crowdsec_data:
+    name: zentoria_crowdsec_data
+    driver: local
+  crowdsec_logs:
+    name: zentoria_crowdsec_logs
+    driver: local
+  nginx_bouncer_cache:
+    name: zentoria_nginx_bouncer_cache
+    driver: local
+  modsec_rules:
+    name: zentoria_modsec_rules
+    driver: local
+  modsec_data:
+    name: zentoria_modsec_data
+    driver: local

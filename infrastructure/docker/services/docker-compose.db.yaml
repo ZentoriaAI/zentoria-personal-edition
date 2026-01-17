@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 16 with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16-latest
+    container_name: zentoria-postgres
+    hostname: postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-zentoria}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "-c shared_preload_libraries=pgvector -c max_connections=200"
+      POSTGRES_DB: zentoria_core
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/:/docker-entrypoint-initdb.d/
+      - ./backups/:/backups/
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zentoria}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '1'
+        memory: 1G
+
+  # PgBouncer for connection pooling
+  pgbouncer:
+    image: edoburu/pgbouncer:1.18
+    container_name: zentoria-pgbouncer
+    hostname: pgbouncer
+    restart: unless-stopped
+    ports:
+      - "6432:6432"
+    environment:
+      DATABASE_URL: "postgres://${DB_USER:-zentoria}:${DB_PASSWORD:-changeme}@postgres:5432/zentoria_core"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      MAX_DB_CONNECTIONS: 100
+      POOL_TIMEOUT: 600
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "psql", "-U", "${DB_USER:-zentoria}", "-h", "localhost", "-p", "6432", "-d", "zentoria_core", "-c", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+  # Automated backups with pg_dump
+  backup:
+    image: postgres:16-alpine
+    container_name: zentoria-backup
+    hostname: backup
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-changeme}
+      DB_USER: ${DB_USER:-zentoria}
+      DB_HOST: postgres
+      DB_PORT: 5432
+    volumes:
+      - ./backups/:/backups/
+      - ./scripts/backup.sh:/backup.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zentoria
+    command: >
+      sh -c "
+      while true; do
+        echo '[BACKUP] Starting daily backup at '$(date) >> /backups/backup.log
+        pg_dump -h postgres -U $${DB_USER} -d zentoria_core | gzip > /backups/zentoria-$$(date +%Y%m%d-%H%M%S).sql.gz
+        find /backups/ -name 'zentoria-*.sql.gz' -mtime +7 -delete
+        echo '[BACKUP] Backup completed at '$(date) >> /backups/backup.log
+        sleep 86400
+      done
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 512M
+      reservations:
+        cpus: '0.25'
+        memory: 256M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_data:
+    name: zentoria_postgres_data
+    driver: local

@@ -1,0 +1,97 @@
+# Grafana Datasource Provisioning for Zentoria Personal Edition
+# Auto-configures Prometheus and Loki as data sources
+
+apiVersion: 1
+
+# Delete datasources that are not in this file
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
+datasources:
+  # =============================================================================
+  # PROMETHEUS - Metrics
+  # =============================================================================
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    orgId: 1
+    version: 1
+    editable: false
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: "2.47.0"
+      cacheLevel: 'High'
+      disableRecordingRules: false
+      incrementalQueryOverlapWindow: 10m
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: View Trace
+
+  # =============================================================================
+  # LOKI - Logs
+  # =============================================================================
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    orgId: 1
+    version: 1
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: trace_id
+          matcherRegex: "trace_id=(\\w+)"
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          urlDisplayLabel: View Trace
+
+  # =============================================================================
+  # ALERTMANAGER - Alert Management
+  # =============================================================================
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    isDefault: false
+    orgId: 1
+    version: 1
+    editable: false
+    jsonData:
+      implementation: prometheus
+
+  # =============================================================================
+  # POSTGRES - Direct DB Access (optional)
+  # =============================================================================
+  - name: PostgreSQL
+    type: postgres
+    uid: postgres
+    access: proxy
+    url: db:5432
+    user: grafana_reader
+    isDefault: false
+    orgId: 1
+    version: 1
+    editable: false
+    secureJsonData:
+      password: ${POSTGRES_GRAFANA_PASSWORD}
+    jsonData:
+      database: zentoria
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false

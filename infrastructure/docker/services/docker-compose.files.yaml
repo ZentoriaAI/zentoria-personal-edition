@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # MinIO for object storage (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: zentoria-minio
+    hostname: minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+      MINIO_SERVER_URL: http://minio:9000
+      MINIO_LOG_LEVEL: ${MINIO_LOG_LEVEL:-info}
+    volumes:
+      - minio_data_1:/data1
+      - minio_data_2:/data2
+      - minio_data_3:/data3
+      - minio_data_4:/data4
+    command: server http://minio:9000/data{1,2,3,4} --console-address ":9001"
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 1G
+      reservations:
+        cpus: '1'
+        memory: 512M
+
+  # MinIO bucket initialization
+  minio-init:
+    image: minio/mc:latest
+    container_name: zentoria-minio-init
+    restart: on-failure
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - zentoria
+    volumes:
+      - ./scripts/init-buckets.sh:/init-buckets.sh:ro
+    entrypoint: >
+      sh -c "
+      mc alias set zentoria http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb zentoria/documents --ignore-existing;
+      mc mb zentoria/receipts --ignore-existing;
+      mc mb zentoria/uploads --ignore-existing;
+      mc mb zentoria/backups --ignore-existing;
+      mc mb zentoria/exports --ignore-existing;
+      mc versioning enable zentoria/backups;
+      mc versioning enable zentoria/documents;
+      echo 'MinIO buckets initialized successfully';
+      "
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "1"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  minio_data_1:
+    name: zentoria_minio_data_1
+    driver: local
+  minio_data_2:
+    name: zentoria_minio_data_2
+    driver: local
+  minio_data_3:
+    name: zentoria_minio_data_3
+    driver: local
+  minio_data_4:
+    name: zentoria_minio_data_4
+    driver: local

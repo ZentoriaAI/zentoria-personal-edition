@@ -1,0 +1,206 @@
+{{ define "email.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            padding: 20px;
+            color: white;
+            text-align: center;
+        }
+        .header.firing { background-color: #dc3545; }
+        .header.resolved { background-color: #28a745; }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .header .status {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .content {
+            padding: 20px;
+        }
+        .alert-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+        .alert-header {
+            padding: 12px 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .alert-header.critical { background-color: #fee; border-left: 4px solid #dc3545; }
+        .alert-header.warning { background-color: #fff3cd; border-left: 4px solid #ffc107; }
+        .alert-header.info { background-color: #e7f5ff; border-left: 4px solid #17a2b8; }
+        .alert-header.resolved { background-color: #d4edda; border-left: 4px solid #28a745; }
+        .alert-body {
+            padding: 15px;
+            background-color: #fafafa;
+        }
+        .label {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        .label.severity-critical { background-color: #dc3545; color: white; }
+        .label.severity-warning { background-color: #ffc107; color: #333; }
+        .label.severity-info { background-color: #17a2b8; color: white; }
+        .label.container { background-color: #6c757d; color: white; }
+        .label.category { background-color: #007bff; color: white; }
+        .description {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .meta {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        .footer {
+            padding: 15px 20px;
+            background-color: #f8f9fa;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+        }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 5px;
+        }
+        .button:hover { background-color: #0056b3; }
+        .button.secondary { background-color: #6c757d; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        td, th {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        th { background-color: #f8f9fa; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header {{ .Status }}">
+            <h1>{{ if eq .Status "firing" }}Alert Firing{{ else }}Alert Resolved{{ end }}</h1>
+            <div class="status">
+                {{ .Alerts | len }} alert(s) {{ .Status }}
+            </div>
+        </div>
+
+        <div class="content">
+            {{ if eq .Status "firing" }}
+            <p>The following alerts are currently firing:</p>
+            {{ else }}
+            <p>The following alerts have been resolved:</p>
+            {{ end }}
+
+            {{ range .Alerts }}
+            <div class="alert-card">
+                <div class="alert-header {{ .Labels.severity }}{{ if eq $.Status "resolved" }} resolved{{ end }}">
+                    <span>{{ .Labels.alertname }}</span>
+                    <span>
+                        {{ if .Labels.severity }}
+                        <span class="label severity-{{ .Labels.severity }}">{{ .Labels.severity }}</span>
+                        {{ end }}
+                        {{ if .Labels.container }}
+                        <span class="label container">{{ .Labels.container }}</span>
+                        {{ end }}
+                    </span>
+                </div>
+                <div class="alert-body">
+                    {{ if .Annotations.summary }}
+                    <strong>Summary:</strong>
+                    <div class="description">{{ .Annotations.summary }}</div>
+                    {{ end }}
+
+                    {{ if .Annotations.description }}
+                    <strong>Description:</strong>
+                    <div class="description">{{ .Annotations.description }}</div>
+                    {{ end }}
+
+                    <table>
+                        <tr>
+                            <th>Label</th>
+                            <th>Value</th>
+                        </tr>
+                        {{ range .Labels.SortedPairs }}
+                        <tr>
+                            <td>{{ .Name }}</td>
+                            <td>{{ .Value }}</td>
+                        </tr>
+                        {{ end }}
+                    </table>
+
+                    <div class="meta">
+                        <strong>Started:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+                        {{ if .EndsAt.After .StartsAt }}
+                        <br><strong>Ended:</strong> {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}
+                        {{ end }}
+                    </div>
+
+                    {{ if .Annotations.runbook_url }}
+                    <div style="margin-top: 15px;">
+                        <a href="{{ .Annotations.runbook_url }}" class="button">View Runbook</a>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="http://grafana.zentoria.local:3000/alerting/list" class="button">View in Grafana</a>
+                <a href="http://alertmanager.zentoria.local:9093/#/alerts" class="button secondary">AlertManager</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>
+                This alert was generated by Zentoria Personal Edition Monitoring
+                <br>
+                Time: {{ .CommonAnnotations.SortedPairs.Values | join ", " }}
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+{{ end }}

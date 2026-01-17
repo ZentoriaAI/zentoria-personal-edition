@@ -1,0 +1,220 @@
+version: '3.8'
+
+services:
+  # NGINX reverse proxy and load balancer
+  nginx:
+    image: nginx:alpine
+    container_name: zentoria-nginx
+    hostname: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      TZ: ${TZ:-UTC}
+      NGINX_WORKER_PROCESSES: ${NGINX_WORKERS:-auto}
+      NGINX_WORKER_CONNECTIONS: ${NGINX_WORKER_CONNECTIONS:-2048}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+      - nginx_logs:/var/log/nginx
+      - ./nginx/html:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 512M
+      reservations:
+        cpus: '1'
+        memory: 256M
+
+  # Certbot for SSL certificate management
+  certbot:
+    image: certbot/certbot:latest
+    container_name: zentoria-certbot
+    hostname: certbot
+    restart: unless-stopped
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-admin@zentoria.ai}
+      CERTBOT_DOMAIN: ${CERTBOT_DOMAIN:-zentoria.ai}
+      CERTBOT_RENEW_HOOK: "nginx -s reload"
+    volumes:
+      - ./certbot/letsencrypt:/etc/letsencrypt
+      - ./certbot/webroot:/var/www/certbot:ro
+      - ./certbot/renewal-hooks:/etc/letsencrypt/renewal-hooks:ro
+    networks:
+      - zentoria
+    command: >
+      certonly --webroot --webroot-path=/var/www/certbot
+      --email ${CERTBOT_EMAIL:-admin@zentoria.ai}
+      --agree-tos --no-eff-email --keep-until-expiring
+      -d ${CERTBOT_DOMAIN:-zentoria.ai}
+      -d *.${CERTBOT_DOMAIN:-zentoria.ai}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+  # Traefik advanced reverse proxy (alternative to NGINX)
+  traefik:
+    image: traefik:v2.10
+    container_name: zentoria-traefik
+    hostname: traefik
+    restart: unless-stopped
+    ports:
+      - "8013:80"
+      - "8443:443"
+      - "8888:8080"
+    environment:
+      TRAEFIK_API_INSECURE: ${TRAEFIK_INSECURE:-false}
+      TRAEFIK_ENTRYPOINTS_WEB_ADDRESS: :80
+      TRAEFIK_ENTRYPOINTS_WEBSECURE_ADDRESS: :443
+      TRAEFIK_LOG_LEVEL: ${TRAEFIK_LOG_LEVEL:-info}
+      TRAEFIK_ACCESSLOG: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/ssl:/etc/traefik/ssl:ro
+      - traefik_data:/data
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+  # HAProxy for high-performance load balancing
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: zentoria-haproxy
+    hostname: haproxy
+    restart: unless-stopped
+    ports:
+      - "8014:80"
+      - "8015:443"
+      - "8404:8404"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/ssl:/etc/haproxy/ssl:ro
+      - haproxy_stats:/var/run/haproxy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8404/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 512M
+      reservations:
+        cpus: '1'
+        memory: 256M
+
+  # Caddy simple reverse proxy
+  caddy:
+    image: caddy:latest
+    container_name: zentoria-caddy
+    hostname: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      LOG_LEVEL: ${CADDY_LOG_LEVEL:-info}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 256M
+      reservations:
+        cpus: '0.5'
+        memory: 128M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  nginx_cache:
+    name: zentoria_nginx_cache
+    driver: local
+  nginx_logs:
+    name: zentoria_nginx_logs
+    driver: local
+  traefik_data:
+    name: zentoria_traefik_data
+    driver: local
+  haproxy_stats:
+    name: zentoria_haproxy_stats
+    driver: local
+  caddy_data:
+    name: zentoria_caddy_data
+    driver: local
+  caddy_config:
+    name: zentoria_caddy_config
+    driver: local

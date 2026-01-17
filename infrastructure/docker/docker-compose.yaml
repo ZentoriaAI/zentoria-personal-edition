@@ -1,0 +1,29 @@
+version: '3.8'
+
+# Zentoria Personal Edition - Master Compose Configuration
+# This file orchestrates all services using the include directive
+
+include:
+  - services/docker-compose.db.yaml
+  - services/docker-compose.redis.yaml
+  - services/docker-compose.vault.yaml
+  - services/docker-compose.logs.yaml
+  - services/docker-compose.files.yaml
+  - services/docker-compose.n8n.yaml
+  - services/docker-compose.ai.yaml
+  - services/docker-compose.embeddings.yaml
+  - services/docker-compose.ocr.yaml
+  - services/docker-compose.voice.yaml
+  - services/docker-compose.auth.yaml
+  - services/docker-compose.waf.yaml
+  - services/docker-compose.docs.yaml
+  - services/docker-compose.proxy.yaml
+
+# Global network definition
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

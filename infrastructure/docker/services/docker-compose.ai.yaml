@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # Ollama for local LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: zentoria-ollama
+    hostname: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_DEBUG: ${OLLAMA_DEBUG:-false}
+      OLLAMA_LOG_LEVEL: ${OLLAMA_LOG_LEVEL:-info}
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama/models:/root/.ollama/models
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '4'
+        memory: 8G
+      reservations:
+        cpus: '2'
+        memory: 4G
+
+  # Open WebUI for Ollama
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: zentoria-open-webui
+    hostname: open-webui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      OLLAMA_API_BASE_URL: http://ollama:11434/api
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-changeme}
+      WEBUI_DEFAULT_LOCALE: ${WEBUI_DEFAULT_LOCALE:-en}
+      WEBUI_FRONTEND_BUILD_IMAGE_REPO: ${WEBUI_FRONTEND_BUILD_IMAGE_REPO:-ghcr.io/open-webui/open-webui}
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '1'
+        memory: 1G
+
+  # AI Orchestrator service for Zentoria
+  ai-orchestrator:
+    image: zentoria/ai-orchestrator:latest
+    container_name: zentoria-ai-orchestrator
+    hostname: ai-orchestrator
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/2
+      DATABASE_URL: postgresql://${DB_USER:-zentoria}:${DB_PASSWORD:-changeme}@pgbouncer:6432/zentoria_core
+      LOG_LEVEL: ${AI_LOG_LEVEL:-info}
+      INFERENCE_TIMEOUT: ${INFERENCE_TIMEOUT:-120}
+      MAX_QUEUE_SIZE: ${MAX_QUEUE_SIZE:-100}
+      WORKER_COUNT: ${WORKER_COUNT:-4}
+      CONTEXT_SIZE: ${CONTEXT_SIZE:-4096}
+    volumes:
+      - ./ai-orchestrator/config.yaml:/app/config.yaml:ro
+      - ai_models:/app/models
+    depends_on:
+      ollama:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '2'
+        memory: 2G
+      reservations:
+        cpus: '1'
+        memory: 1G
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  ollama_data:
+    name: zentoria_ollama_data
+    driver: local
+  open_webui_data:
+    name: zentoria_open_webui_data
+    driver: local
+  ai_models:
+    name: zentoria_ai_models
+    driver: local

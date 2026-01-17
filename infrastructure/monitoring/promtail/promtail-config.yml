@@ -1,0 +1,344 @@
+# Promtail Configuration for Zentoria Personal Edition
+# Version: 1.0.0
+# Log shipper for all 17 containers
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+# Position tracking for log files
+positions:
+  filename: /tmp/positions.yaml
+  sync_period: 10s
+  ignore_invalid_yaml: true
+
+# Loki client configuration
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: zentoria
+    batchwait: 1s
+    batchsize: 1048576  # 1MB
+    timeout: 10s
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+    external_labels:
+      environment: personal
+      cluster: zentoria-pe
+
+# =============================================================================
+# SCRAPE CONFIGURATIONS
+# =============================================================================
+scrape_configs:
+  # ===========================================================================
+  # DOCKER/CONTAINER LOGS
+  # ===========================================================================
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Keep only Zentoria containers
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        regex: 'zentoria.*'
+        action: keep
+
+      # Extract container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+
+      # Extract compose service name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
+
+      # Extract container ID (short)
+      - source_labels: ['__meta_docker_container_id']
+        regex: '(.{12}).*'
+        target_label: container_id
+
+      # Set log path
+      - source_labels: ['__meta_docker_container_id']
+        target_label: __path__
+        replacement: /var/lib/docker/containers/$1/*.log
+
+    pipeline_stages:
+      # Parse Docker JSON log format
+      - json:
+          expressions:
+            log: log
+            stream: stream
+            time: time
+
+      # Set timestamp from Docker log time
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+
+      # Output is the log message
+      - output:
+          source: log
+
+      # Parse JSON logs (for structured logging applications)
+      - match:
+          selector: '{container=~"frontend|backend|auth"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  message: message
+                  trace_id: trace_id
+                  span_id: span_id
+                  error: error
+                  stack: stack
+            - labels:
+                level:
+                trace_id:
+
+      # Parse Python logging (for AI services)
+      - match:
+          selector: '{container=~"ai|ocr|voice|embeddings"}'
+          stages:
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (?P<level>\w+) - (?P<logger>[\w\.]+) - (?P<message>.*)$'
+            - labels:
+                level:
+                logger:
+
+      # Parse PostgreSQL logs
+      - match:
+          selector: '{container="db"}'
+          stages:
+            - regex:
+                expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \w+) \[(?P<pid>\d+)\] (?P<level>\w+):  (?P<message>.*)$'
+            - labels:
+                level:
+                pid:
+            - template:
+                source: level
+                template: '{{ ToLower .Value }}'
+
+      # Parse Redis logs
+      - match:
+          selector: '{container="redis"}'
+          stages:
+            - regex:
+                expression: '^(?P<pid>\d+):(?P<role>[A-Z]) (?P<timestamp>\d+ \w+ \d{4} \d{2}:\d{2}:\d{2}\.\d{3}) (?P<level>[\*\#\-\.]) (?P<message>.*)$'
+            - labels:
+                role:
+            - template:
+                source: level
+                template: |
+                  {{ if eq .Value "*" }}notice{{ else if eq .Value "#" }}warning{{ else if eq .Value "-" }}info{{ else }}debug{{ end }}
+
+      # Parse Nginx access logs
+      - match:
+          selector: '{container="proxy"}'
+          stages:
+            - regex:
+                expression: '^(?P<remote_addr>[\d\.]+) - (?P<remote_user>\S+) \[(?P<time_local>[^\]]+)\] "(?P<method>\w+) (?P<request_uri>\S+) (?P<protocol>\S+)" (?P<status>\d+) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]*)" "(?P<http_user_agent>[^"]*)"'
+            - labels:
+                method:
+                status:
+            - metrics:
+                http_response_codes:
+                  type: Counter
+                  description: "HTTP response status codes"
+                  source: status
+                  config:
+                    match_all: true
+                    action: inc
+
+      # Parse n8n workflow logs
+      - match:
+          selector: '{container="n8n"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  message: message
+                  workflow_id: workflowId
+                  execution_id: executionId
+                  node_name: nodeName
+            - labels:
+                level:
+                workflow_id:
+                execution_id:
+
+      # Parse Vault audit logs
+      - match:
+          selector: '{container="vault"}'
+          stages:
+            - json:
+                expressions:
+                  type: type
+                  time: time
+                  auth_client_token: auth.client_token
+                  auth_accessor: auth.accessor
+                  auth_display_name: auth.display_name
+                  request_id: request.id
+                  request_operation: request.operation
+                  request_path: request.path
+                  response_error: error
+            - labels:
+                type:
+                request_operation:
+
+      # Parse MinIO logs
+      - match:
+          selector: '{container="files"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  message: message
+                  api: api
+                  bucket: bucket
+            - labels:
+                level:
+                api:
+
+      # Normalize log levels
+      - template:
+          source: level
+          template: '{{ ToLower .Value }}'
+
+      # Drop debug logs in production (optional - comment out for debugging)
+      # - match:
+      #     selector: '{level="debug"}'
+      #     action: drop
+
+      # Add static labels
+      - static_labels:
+          source: promtail
+
+  # ===========================================================================
+  # SYSTEM LOGS (from containers)
+  # ===========================================================================
+  - job_name: syslog
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: syslog
+          __path__: /var/log/syslog
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\w+ \d+ \d+:\d+:\d+) (?P<host>\S+) (?P<process>\S+)(\[(?P<pid>\d+)\])?: (?P<message>.*)$'
+      - labels:
+          host:
+          process:
+      - timestamp:
+          source: timestamp
+          format: 'Jan _2 15:04:05'
+
+  # ===========================================================================
+  # JOURNAL LOGS (systemd)
+  # ===========================================================================
+  - job_name: journal
+    journal:
+      max_age: 12h
+      labels:
+        job: systemd-journal
+      path: /var/log/journal
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: unit
+      - source_labels: ['__journal__hostname']
+        target_label: hostname
+      - source_labels: ['__journal_priority_keyword']
+        target_label: level
+
+  # ===========================================================================
+  # APPLICATION-SPECIFIC LOG FILES
+  # ===========================================================================
+
+  # Backend API logs (if writing to file)
+  - job_name: backend-file
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: backend-file
+          container: backend
+          __path__: /var/log/zentoria/backend/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            trace_id: trace_id
+      - labels:
+          level:
+          trace_id:
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+
+  # n8n workflow execution logs
+  - job_name: n8n-executions
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: n8n-executions
+          container: n8n
+          __path__: /var/log/zentoria/n8n/executions/*.json
+    pipeline_stages:
+      - json:
+          expressions:
+            workflow_id: workflowId
+            execution_id: id
+            status: status
+            started_at: startedAt
+            finished_at: finishedAt
+            error: error
+      - labels:
+          workflow_id:
+          status:
+
+  # Backup logs
+  - job_name: backup-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: backup
+          container: backup
+          __path__: /var/log/zentoria/backup/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) (?P<level>\w+) (?P<message>.*)$'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02T15:04:05'
+
+  # WAF security logs
+  - job_name: waf-security
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: waf-security
+          container: waf
+          __path__: /var/log/zentoria/waf/modsec_audit.log
+    pipeline_stages:
+      - multiline:
+          firstline: '^\-\-[a-f0-9]+'
+          max_wait_time: 3s
+      - regex:
+          expression: '\[id "(?P<rule_id>\d+)"\].*\[msg "(?P<message>[^"]+)"\].*\[severity "(?P<severity>\w+)"\]'
+      - labels:
+          rule_id:
+          severity:
+
+# =============================================================================
+# TARGET / SERVICE DISCOVERY
+# =============================================================================
+target_config:
+  sync_period: 10s

@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  # Wiki.js for project documentation
+  wikijs:
+    image: ghcr.io/requarks/wiki:latest
+    container_name: zentoria-wiki
+    hostname: wiki
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${WIKIJS_DB_NAME:-wikijs}
+      DB_USER: ${WIKIJS_DB_USER:-wikijs}
+      DB_PASS: ${WIKIJS_DB_PASSWORD:-changeme}
+      DB_SSL: ${DB_SSL:-false}
+      INSTANCE_TITLE: ${WIKI_TITLE:-Zentoria Docs}
+      INSTANCE_DESCRIPTION: ${WIKI_DESCRIPTION:-Complete documentation for Zentoria services}
+      LOGURU_LEVEL: ${WIKI_LOG_LEVEL:-info}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - wikijs_data:/data
+      - ./wikijs/config.yml:/wiki/config.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+  # Swagger UI for API documentation
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: zentoria-swagger
+    hostname: swagger
+    restart: unless-stopped
+    ports:
+      - "8010:8080"
+    environment:
+      SWAGGER_JSON: /specs/openapi.yaml
+      SWAGGER_JSON_URL: /api/specs/openapi.json
+      URL: /api/specs/openapi.json
+    volumes:
+      - ./swagger/openapi.yaml:/specs/openapi.yaml:ro
+      - ./swagger/definitions:/specs/definitions:ro
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+  # Redoc for API documentation (alternative)
+  redoc:
+    image: redocly/redoc:latest
+    container_name: zentoria-redoc
+    hostname: redoc
+    restart: unless-stopped
+    ports:
+      - "8011:80"
+    environment:
+      SPEC_URL: /openapi.yaml
+    volumes:
+      - ./redoc/openapi.yaml:/usr/share/nginx/html/openapi.yaml:ro
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+      reservations:
+        cpus: '0.25'
+        memory: 128M
+
+  # Documentation generator service
+  docs-generator:
+    image: zentoria/docs-generator:latest
+    container_name: zentoria-docs-gen
+    hostname: docs-gen
+    restart: unless-stopped
+    ports:
+      - "8012:8000"
+    environment:
+      LOG_LEVEL: ${DOCS_GEN_LOG_LEVEL:-info}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/12
+      DATABASE_URL: postgresql://${DB_USER:-zentoria}:${DB_PASSWORD:-changeme}@pgbouncer:6432/zentoria_core
+      WIKI_API_URL: http://wikijs:3000
+      OUTPUT_FORMAT: ${DOCS_OUTPUT_FORMAT:-markdown,html,pdf}
+      AUTO_GENERATION: ${DOCS_AUTO_GENERATION:-true}
+      AUTO_GENERATION_INTERVAL: ${DOCS_AUTO_INTERVAL:-86400}
+    volumes:
+      - docs_output:/app/output
+      - docs_templates:/app/templates
+      - ./docs-generator/config.yaml:/app/config.yaml:ro
+    depends_on:
+      wikijs:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zentoria
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    resources:
+      limits:
+        cpus: '1'
+        memory: 512M
+      reservations:
+        cpus: '0.5'
+        memory: 256M
+
+networks:
+  zentoria:
+    name: zentoria
+    driver: bridge
+    external: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  wikijs_data:
+    name: zentoria_wikijs_data
+    driver: local
+  docs_output:
+    name: zentoria_docs_output
+    driver: local
+  docs_templates:
+    name: zentoria_docs_templates
+    driver: local

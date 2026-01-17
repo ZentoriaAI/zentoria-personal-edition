@@ -1,0 +1,37 @@
+{{ define "slack.title" }}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.SortedPairs.Values | join " " }}
+{{ end }}
+
+{{ define "slack.text" }}
+{{ range .Alerts }}
+*Alert:* {{ .Labels.alertname }}
+*Severity:* `{{ .Labels.severity }}`
+{{ if .Labels.container }}*Container:* `{{ .Labels.container }}`{{ end }}
+{{ if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`{{ end }}
+
+{{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
+{{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
+
+*Labels:*
+{{ range .Labels.SortedPairs }}• {{ .Name }}: `{{ .Value }}`
+{{ end }}
+*Started:* {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ if .EndsAt.After .StartsAt }}*Ended:* {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
+{{ if .Annotations.runbook_url }}
+<{{ .Annotations.runbook_url }}|View Runbook>
+{{ end }}
+---
+{{ end }}
+{{ end }}
+
+{{ define "slack.color" }}
+{{ if eq .Status "firing" }}
+{{ if eq .CommonLabels.severity "critical" }}danger{{ else if eq .CommonLabels.severity "warning" }}warning{{ else }}#439FE0{{ end }}
+{{ else }}good{{ end }}
+{{ end }}
+
+{{ define "slack.icon" }}
+{{ if eq .Status "firing" }}
+{{ if eq .CommonLabels.severity "critical" }}:rotating_light:{{ else if eq .CommonLabels.severity "warning" }}:warning:{{ else }}:information_source:{{ end }}
+{{ else }}:white_check_mark:{{ end }}
+{{ end }}

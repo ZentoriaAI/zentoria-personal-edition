@@ -1,0 +1,292 @@
+# Prometheus Recording Rules for Zentoria Personal Edition
+# Pre-computed metrics for dashboard performance
+
+groups:
+  # =============================================================================
+  # SYSTEM RESOURCE RECORDING RULES
+  # =============================================================================
+  - name: zentoria_system_recording
+    interval: 30s
+    rules:
+      # CPU Usage per container (5m average)
+      - record: zentoria:container:cpu_usage_percent:avg5m
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      # Memory Usage per container
+      - record: zentoria:container:memory_usage_bytes:current
+        expr: |
+          node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+
+      - record: zentoria:container:memory_usage_percent:current
+        expr: |
+          100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+      # Disk Usage per container
+      - record: zentoria:container:disk_usage_percent:current
+        expr: |
+          100 - (node_filesystem_avail_bytes{fstype!="tmpfs",mountpoint="/"} / node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"} * 100)
+
+      # Network I/O rates
+      - record: zentoria:container:network_receive_bytes:rate5m
+        expr: |
+          rate(node_network_receive_bytes_total{device!~"lo|veth.*"}[5m])
+
+      - record: zentoria:container:network_transmit_bytes:rate5m
+        expr: |
+          rate(node_network_transmit_bytes_total{device!~"lo|veth.*"}[5m])
+
+  # =============================================================================
+  # API PERFORMANCE RECORDING RULES
+  # =============================================================================
+  - name: zentoria_api_recording
+    interval: 30s
+    rules:
+      # Request rate per endpoint
+      - record: zentoria:api:request_rate:5m
+        expr: |
+          sum by (method, path, status) (rate(http_requests_total[5m]))
+
+      # Request latency percentiles
+      - record: zentoria:api:latency_p50:5m
+        expr: |
+          histogram_quantile(0.50, sum by (le, method, path) (rate(http_request_duration_seconds_bucket[5m])))
+
+      - record: zentoria:api:latency_p95:5m
+        expr: |
+          histogram_quantile(0.95, sum by (le, method, path) (rate(http_request_duration_seconds_bucket[5m])))
+
+      - record: zentoria:api:latency_p99:5m
+        expr: |
+          histogram_quantile(0.99, sum by (le, method, path) (rate(http_request_duration_seconds_bucket[5m])))
+
+      # Error rate
+      - record: zentoria:api:error_rate:5m
+        expr: |
+          sum by (method, path) (rate(http_requests_total{status=~"5.."}[5m]))
+          / sum by (method, path) (rate(http_requests_total[5m]))
+
+      # Success rate (SLI)
+      - record: zentoria:api:success_rate:5m
+        expr: |
+          sum(rate(http_requests_total{status!~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m]))
+
+  # =============================================================================
+  # DATABASE RECORDING RULES
+  # =============================================================================
+  - name: zentoria_database_recording
+    interval: 30s
+    rules:
+      # Active connections
+      - record: zentoria:postgres:connections_active:current
+        expr: |
+          pg_stat_activity_count{state="active"}
+
+      # Connection pool utilization
+      - record: zentoria:postgres:connection_pool_usage:percent
+        expr: |
+          pg_stat_activity_count / pg_settings_max_connections * 100
+
+      # Query rate
+      - record: zentoria:postgres:query_rate:5m
+        expr: |
+          sum(rate(pg_stat_statements_calls_total[5m]))
+
+      # Slow queries (> 1s)
+      - record: zentoria:postgres:slow_queries:rate5m
+        expr: |
+          sum(rate(pg_stat_statements_seconds_total{quantile="0.99"}[5m]))
+
+      # Cache hit ratio
+      - record: zentoria:postgres:cache_hit_ratio:current
+        expr: |
+          pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read)
+
+      # Transaction rate
+      - record: zentoria:postgres:transaction_rate:5m
+        expr: |
+          sum(rate(pg_stat_database_xact_commit[5m]) + rate(pg_stat_database_xact_rollback[5m]))
+
+  # =============================================================================
+  # REDIS RECORDING RULES
+  # =============================================================================
+  - name: zentoria_redis_recording
+    interval: 30s
+    rules:
+      # Memory usage
+      - record: zentoria:redis:memory_used_bytes:current
+        expr: |
+          redis_memory_used_bytes
+
+      - record: zentoria:redis:memory_usage_percent:current
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes * 100
+
+      # Hit rate
+      - record: zentoria:redis:hit_rate:5m
+        expr: |
+          rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))
+
+      # Operations per second
+      - record: zentoria:redis:ops_per_sec:5m
+        expr: |
+          sum(rate(redis_commands_total[5m]))
+
+      # Connected clients
+      - record: zentoria:redis:connected_clients:current
+        expr: |
+          redis_connected_clients
+
+  # =============================================================================
+  # AI/ML SERVICE RECORDING RULES
+  # =============================================================================
+  - name: zentoria_ai_recording
+    interval: 30s
+    rules:
+      # Ollama inference requests
+      - record: zentoria:ollama:inference_rate:5m
+        expr: |
+          sum(rate(ollama_requests_total[5m]))
+
+      # Model load time
+      - record: zentoria:ollama:model_load_seconds:avg5m
+        expr: |
+          avg(rate(ollama_model_load_seconds_sum[5m]) / rate(ollama_model_load_seconds_count[5m]))
+
+      # Tokens per second (generation speed)
+      - record: zentoria:ollama:tokens_per_second:avg5m
+        expr: |
+          sum(rate(ollama_tokens_generated_total[5m]))
+
+      # GPU memory usage (if available)
+      - record: zentoria:ollama:gpu_memory_used_bytes:current
+        expr: |
+          ollama_gpu_memory_used_bytes
+
+      # OCR processing rate
+      - record: zentoria:ocr:processing_rate:5m
+        expr: |
+          sum(rate(ocr_documents_processed_total[5m]))
+
+      # Voice transcription rate
+      - record: zentoria:voice:transcription_rate:5m
+        expr: |
+          sum(rate(voice_transcriptions_total[5m]))
+
+      # Embeddings generation rate
+      - record: zentoria:embeddings:generation_rate:5m
+        expr: |
+          sum(rate(embeddings_generated_total[5m]))
+
+  # =============================================================================
+  # STORAGE RECORDING RULES (MinIO)
+  # =============================================================================
+  - name: zentoria_storage_recording
+    interval: 60s
+    rules:
+      # Total storage used
+      - record: zentoria:minio:storage_used_bytes:current
+        expr: |
+          minio_cluster_disk_total_used_bytes
+
+      # Storage available
+      - record: zentoria:minio:storage_available_bytes:current
+        expr: |
+          minio_cluster_disk_total_free_bytes
+
+      # Storage usage percentage
+      - record: zentoria:minio:storage_usage_percent:current
+        expr: |
+          minio_cluster_disk_total_used_bytes / (minio_cluster_disk_total_used_bytes + minio_cluster_disk_total_free_bytes) * 100
+
+      # Object count
+      - record: zentoria:minio:objects_total:current
+        expr: |
+          minio_bucket_objects_count
+
+      # Request rate
+      - record: zentoria:minio:request_rate:5m
+        expr: |
+          sum(rate(minio_s3_requests_total[5m]))
+
+  # =============================================================================
+  # WORKFLOW (n8n) RECORDING RULES
+  # =============================================================================
+  - name: zentoria_workflow_recording
+    interval: 30s
+    rules:
+      # Workflow execution rate
+      - record: zentoria:n8n:workflow_executions:rate5m
+        expr: |
+          sum(rate(n8n_workflow_execution_total[5m]))
+
+      # Workflow success rate
+      - record: zentoria:n8n:workflow_success_rate:5m
+        expr: |
+          sum(rate(n8n_workflow_execution_total{status="success"}[5m]))
+          / sum(rate(n8n_workflow_execution_total[5m]))
+
+      # Workflow execution duration
+      - record: zentoria:n8n:workflow_duration_p95:5m
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(n8n_workflow_execution_duration_seconds_bucket[5m])))
+
+      # Active workflows
+      - record: zentoria:n8n:active_workflows:current
+        expr: |
+          n8n_workflows_active_total
+
+  # =============================================================================
+  # SECURITY RECORDING RULES
+  # =============================================================================
+  - name: zentoria_security_recording
+    interval: 30s
+    rules:
+      # Authentication success rate
+      - record: zentoria:auth:success_rate:5m
+        expr: |
+          sum(rate(authentik_login_total{result="success"}[5m]))
+          / sum(rate(authentik_login_total[5m]))
+
+      # Failed login attempts
+      - record: zentoria:auth:failed_logins:rate5m
+        expr: |
+          sum(rate(authentik_login_total{result="failure"}[5m]))
+
+      # WAF blocked requests
+      - record: zentoria:waf:blocked_requests:rate5m
+        expr: |
+          sum(rate(modsecurity_blocked_requests_total[5m]))
+
+      # Vault secrets accessed
+      - record: zentoria:vault:secrets_accessed:rate5m
+        expr: |
+          sum(rate(vault_secret_kv_count[5m]))
+
+  # =============================================================================
+  # SLI/SLO RECORDING RULES
+  # =============================================================================
+  - name: zentoria_sli_recording
+    interval: 60s
+    rules:
+      # Availability SLI (uptime)
+      - record: zentoria:sli:availability:5m
+        expr: |
+          avg(up{job=~"frontend|backend|auth"})
+
+      # Latency SLI (requests under 500ms)
+      - record: zentoria:sli:latency_good:5m
+        expr: |
+          sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
+          / sum(rate(http_request_duration_seconds_count[5m]))
+
+      # Error Budget Burn Rate (30d window)
+      - record: zentoria:slo:error_budget_burn:1h
+        expr: |
+          1 - (zentoria:api:success_rate:5m)
+
+      # Error Budget Remaining (target 99.9% = 0.1% error budget)
+      - record: zentoria:slo:error_budget_remaining:30d
+        expr: |
+          1 - ((1 - avg_over_time(zentoria:api:success_rate:5m[30d])) / 0.001)

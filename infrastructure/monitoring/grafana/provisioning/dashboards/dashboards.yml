@@ -1,0 +1,50 @@
+# Grafana Dashboard Provisioning for Zentoria Personal Edition
+# Auto-loads dashboards from JSON files
+
+apiVersion: 1
+
+providers:
+  # =============================================================================
+  # ZENTORIA DASHBOARDS
+  # =============================================================================
+  - name: 'Zentoria Dashboards'
+    orgId: 1
+    folder: 'Zentoria'
+    folderUid: 'zentoria-dashboards'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: true
+
+  # =============================================================================
+  # INFRASTRUCTURE DASHBOARDS
+  # =============================================================================
+  - name: 'Infrastructure'
+    orgId: 1
+    folder: 'Infrastructure'
+    folderUid: 'infra-dashboards'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json/infrastructure
+      foldersFromFilesStructure: false
+
+  # =============================================================================
+  # AI/ML DASHBOARDS
+  # =============================================================================
+  - name: 'AI Services'
+    orgId: 1
+    folder: 'AI'
+    folderUid: 'ai-dashboards'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json/ai
+      foldersFromFilesStructure: false

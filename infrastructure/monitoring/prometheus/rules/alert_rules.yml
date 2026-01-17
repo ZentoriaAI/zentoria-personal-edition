@@ -1,0 +1,558 @@
+# Prometheus Alert Rules for Zentoria Personal Edition
+# Critical conditions requiring notification
+
+groups:
+  # =============================================================================
+  # SERVICE AVAILABILITY ALERTS
+  # =============================================================================
+  - name: zentoria_availability
+    rules:
+      # Service Down - Critical
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} ({{ $labels.instance }}) has been down for more than 2 minutes."
+          runbook_url: "https://docs.zentoria.ai/runbooks/service-down"
+
+      # Service Flapping
+      - alert: ServiceFlapping
+        expr: changes(up[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: "Service {{ $labels.job }} is flapping"
+          description: "Service {{ $labels.job }} has changed state more than 5 times in the last 15 minutes."
+
+      # API High Error Rate
+      - alert: APIHighErrorRate
+        expr: zentoria:api:error_rate:5m > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "High error rate on {{ $labels.path }}"
+          description: "API endpoint {{ $labels.method }} {{ $labels.path }} has an error rate of {{ $value | humanizePercentage }}."
+
+      # API Slow Response Time
+      - alert: APISlowResponse
+        expr: zentoria:api:latency_p95:5m > 2
+        for: 10m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "Slow API response on {{ $labels.path }}"
+          description: "API endpoint {{ $labels.path }} has P95 latency of {{ $value | humanizeDuration }}."
+
+  # =============================================================================
+  # SYSTEM RESOURCE ALERTS
+  # =============================================================================
+  - name: zentoria_resources
+    rules:
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: zentoria:container:cpu_usage_percent:avg5m > 85
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value | humanize }}% for more than 10 minutes."
+
+      - alert: CriticalCPUUsage
+        expr: zentoria:container:cpu_usage_percent:avg5m > 95
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value | humanize }}% for more than 5 minutes. Immediate action required."
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: zentoria:container:memory_usage_percent:current > 85
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value | humanize }}%."
+
+      - alert: CriticalMemoryUsage
+        expr: zentoria:container:memory_usage_percent:current > 95
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value | humanize }}%. OOM killer may trigger."
+
+      # Disk Space Low
+      - alert: DiskSpaceLow
+        expr: zentoria:container:disk_usage_percent:current > 80
+        for: 15m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage on {{ $labels.instance }} is {{ $value | humanize }}%."
+
+      - alert: DiskSpaceCritical
+        expr: zentoria:container:disk_usage_percent:current > 90
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Disk usage on {{ $labels.instance }} is {{ $value | humanize }}%. Services may fail."
+
+      # Disk Space Prediction (will fill in 24h)
+      - alert: DiskWillFillIn24Hours
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!="tmpfs"}[6h], 24*60*60) < 0
+        for: 1h
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "Disk will fill within 24 hours on {{ $labels.instance }}"
+          description: "At current write rate, disk on {{ $labels.instance }} will be full in less than 24 hours."
+
+  # =============================================================================
+  # DATABASE ALERTS
+  # =============================================================================
+  - name: zentoria_database
+    rules:
+      # PostgreSQL Down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding. All services requiring database access will fail."
+
+      # High Connection Count
+      - alert: PostgreSQLHighConnections
+        expr: zentoria:postgres:connection_pool_usage:percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "High PostgreSQL connection usage"
+          description: "PostgreSQL connection pool is {{ $value | humanize }}% utilized."
+
+      - alert: PostgreSQLConnectionsExhausted
+        expr: zentoria:postgres:connection_pool_usage:percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL connections nearly exhausted"
+          description: "PostgreSQL connection pool is {{ $value | humanize }}% utilized. New connections may be rejected."
+
+      # Low Cache Hit Ratio
+      - alert: PostgreSQLLowCacheHitRatio
+        expr: zentoria:postgres:cache_hit_ratio:current < 0.9
+        for: 30m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "Low PostgreSQL cache hit ratio"
+          description: "PostgreSQL cache hit ratio is {{ $value | humanizePercentage }}. Consider increasing shared_buffers."
+
+      # Replication Lag (if applicable)
+      - alert: PostgreSQLReplicationLag
+        expr: pg_replication_lag > 300
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL replication lag"
+          description: "Replication lag is {{ $value | humanizeDuration }}."
+
+      # Deadlocks
+      - alert: PostgreSQLDeadlocks
+        expr: increase(pg_stat_database_deadlocks[5m]) > 0
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: "PostgreSQL deadlocks detected"
+          description: "{{ $value }} deadlocks detected in the last 5 minutes."
+
+  # =============================================================================
+  # REDIS ALERTS
+  # =============================================================================
+  - name: zentoria_redis
+    rules:
+      # Redis Down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding. Session management and caching will be affected."
+
+      # High Memory Usage
+      - alert: RedisHighMemoryUsage
+        expr: zentoria:redis:memory_usage_percent:current > 85
+        for: 10m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is {{ $value | humanize }}%. Consider eviction policy or memory increase."
+
+      # Low Hit Rate
+      - alert: RedisLowHitRate
+        expr: zentoria:redis:hit_rate:5m < 0.8
+        for: 30m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Low Redis hit rate"
+          description: "Redis cache hit rate is {{ $value | humanizePercentage }}. Review caching strategy."
+
+      # Too Many Connections
+      - alert: RedisTooManyConnections
+        expr: zentoria:redis:connected_clients:current > 500
+        for: 5m
+        labels:
+          severity: warning
+          category: cache
+        annotations:
+          summary: "Too many Redis connections"
+          description: "Redis has {{ $value }} connected clients."
+
+  # =============================================================================
+  # AI/ML SERVICE ALERTS
+  # =============================================================================
+  - name: zentoria_ai
+    rules:
+      # Ollama Down
+      - alert: OllamaDown
+        expr: up{job="ollama"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: ai
+        annotations:
+          summary: "Ollama AI service is down"
+          description: "Ollama AI service is not responding. AI features will be unavailable."
+
+      # High GPU Memory Usage
+      - alert: OllamaHighGPUMemory
+        expr: zentoria:ollama:gpu_memory_used_bytes:current / 1024/1024/1024 > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: "High Ollama GPU memory usage"
+          description: "Ollama is using {{ $value | humanize1024 }}B GPU memory."
+
+      # Slow Inference
+      - alert: OllamaSlowInference
+        expr: zentoria:ollama:tokens_per_second:avg5m < 10
+        for: 10m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: "Slow Ollama inference"
+          description: "Ollama generating only {{ $value | humanize }} tokens/second. Check GPU availability."
+
+      # OCR Service Down
+      - alert: OCRServiceDown
+        expr: up{job="ocr"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: "OCR service is down"
+          description: "OCR service is not responding. Document processing will be affected."
+
+      # Voice Service Down
+      - alert: VoiceServiceDown
+        expr: up{job="voice"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: "Voice/STT service is down"
+          description: "Voice transcription service is not responding."
+
+      # Embeddings Service Down
+      - alert: EmbeddingsServiceDown
+        expr: up{job="embeddings"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: "Embeddings service is down"
+          description: "Embeddings service is not responding. Vector search will be unavailable."
+
+  # =============================================================================
+  # STORAGE ALERTS (MinIO)
+  # =============================================================================
+  - name: zentoria_storage
+    rules:
+      # MinIO Down
+      - alert: MinIODown
+        expr: minio_cluster_nodes_online_total == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: storage
+        annotations:
+          summary: "MinIO storage is down"
+          description: "MinIO storage service is not available. File operations will fail."
+
+      # High Storage Usage
+      - alert: MinIOHighStorageUsage
+        expr: zentoria:minio:storage_usage_percent:current > 80
+        for: 30m
+        labels:
+          severity: warning
+          category: storage
+        annotations:
+          summary: "High MinIO storage usage"
+          description: "MinIO storage is {{ $value | humanize }}% full."
+
+      - alert: MinIOStorageCritical
+        expr: zentoria:minio:storage_usage_percent:current > 90
+        for: 15m
+        labels:
+          severity: critical
+          category: storage
+        annotations:
+          summary: "Critical MinIO storage usage"
+          description: "MinIO storage is {{ $value | humanize }}% full. Uploads may fail."
+
+  # =============================================================================
+  # WORKFLOW (n8n) ALERTS
+  # =============================================================================
+  - name: zentoria_workflows
+    rules:
+      # n8n Down
+      - alert: N8NDown
+        expr: up{job="n8n"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: workflow
+        annotations:
+          summary: "n8n workflow engine is down"
+          description: "n8n is not responding. Automated workflows will not execute."
+
+      # High Workflow Failure Rate
+      - alert: WorkflowHighFailureRate
+        expr: 1 - zentoria:n8n:workflow_success_rate:5m > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          category: workflow
+        annotations:
+          summary: "High workflow failure rate"
+          description: "{{ $value | humanizePercentage }} of workflows are failing."
+
+      # Workflow Execution Slow
+      - alert: WorkflowExecutionSlow
+        expr: zentoria:n8n:workflow_duration_p95:5m > 60
+        for: 15m
+        labels:
+          severity: warning
+          category: workflow
+        annotations:
+          summary: "Slow workflow executions"
+          description: "P95 workflow execution time is {{ $value | humanizeDuration }}."
+
+  # =============================================================================
+  # SECURITY ALERTS
+  # =============================================================================
+  - name: zentoria_security
+    rules:
+      # Vault Down
+      - alert: VaultDown
+        expr: up{job="vault"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Vault secret manager is down"
+          description: "Vault is not responding. Secret management and service authentication may fail."
+
+      # Vault Sealed
+      - alert: VaultSealed
+        expr: vault_core_unsealed == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Vault is sealed"
+          description: "Vault is sealed and cannot serve secrets. Manual unsealing required."
+
+      # High Failed Login Rate
+      - alert: HighFailedLoginRate
+        expr: zentoria:auth:failed_logins:rate5m > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High failed login rate"
+          description: "{{ $value | humanize }} failed login attempts per second. Possible brute force attack."
+
+      # WAF High Block Rate
+      - alert: WAFHighBlockRate
+        expr: zentoria:waf:blocked_requests:rate5m > 100
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High WAF block rate"
+          description: "WAF is blocking {{ $value | humanize }} requests per second. Possible attack in progress."
+
+      # Auth Service Down
+      - alert: AuthServiceDown
+        expr: up{job="auth"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Authentication service is down"
+          description: "Authentik/Auth service is not responding. Users cannot log in."
+
+  # =============================================================================
+  # BACKUP ALERTS
+  # =============================================================================
+  - name: zentoria_backup
+    rules:
+      # Backup Service Down
+      - alert: BackupServiceDown
+        expr: up{job="backup"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          category: backup
+        annotations:
+          summary: "Backup service is down"
+          description: "Backup service is not responding. Scheduled backups may fail."
+
+      # Backup Failed (check for specific metric)
+      - alert: BackupFailed
+        expr: increase(backup_failures_total[24h]) > 0
+        labels:
+          severity: critical
+          category: backup
+        annotations:
+          summary: "Backup failure detected"
+          description: "{{ $value }} backup failures in the last 24 hours."
+
+      # No Recent Backup
+      - alert: NoRecentBackup
+        expr: time() - backup_last_success_timestamp > 86400
+        for: 1h
+        labels:
+          severity: warning
+          category: backup
+        annotations:
+          summary: "No recent backup"
+          description: "No successful backup in the last 24 hours."
+
+  # =============================================================================
+  # SSL/TLS CERTIFICATE ALERTS
+  # =============================================================================
+  - name: zentoria_certificates
+    rules:
+      # Certificate Expiring Soon
+      - alert: CertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}."
+
+      - alert: CertificateExpiringCritical
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 7
+        for: 1h
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "SSL certificate expiring very soon"
+          description: "SSL certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}. Renew immediately."
+
+  # =============================================================================
+  # SLO ALERTS
+  # =============================================================================
+  - name: zentoria_slo
+    rules:
+      # Error Budget Burning Fast (1h window)
+      - alert: ErrorBudgetBurningFast
+        expr: zentoria:slo:error_budget_burn:1h > 0.02
+        for: 5m
+        labels:
+          severity: warning
+          category: slo
+        annotations:
+          summary: "Error budget burning fast"
+          description: "Error budget burn rate is {{ $value | humanizePercentage }}/hour. At this rate, budget will be exhausted."
+
+      # Error Budget Exhausted
+      - alert: ErrorBudgetExhausted
+        expr: zentoria:slo:error_budget_remaining:30d < 0
+        for: 5m
+        labels:
+          severity: critical
+          category: slo
+        annotations:
+          summary: "Error budget exhausted"
+          description: "Monthly error budget has been exhausted. SLO is breached."
+
+      # Availability Below Target
+      - alert: AvailabilityBelowTarget
+        expr: zentoria:sli:availability:5m < 0.999
+        for: 10m
+        labels:
+          severity: warning
+          category: slo
+        annotations:
+          summary: "Availability below target"
+          description: "Service availability is {{ $value | humanizePercentage }}, below 99.9% target."
