@@ -451,20 +451,28 @@ After completing any issue, verify:
 - [x] Created esbuild transpile-only build script
 - [x] Build successful: `npm run build` completes without errors
 
-### Frontend Build (Container 440) ⏳ IN PROGRESS
+### Frontend Build (Container 440) ✅ COMPLETE
 
 - [x] Removed duplicate app/ and lib/ directories
 - [x] Added missing dependencies (@tailwindcss/typography, prism-react-renderer, @playwright/test)
 - [x] Excluded test configs from tsconfig (vitest.config.ts, playwright.config.ts, e2e)
 - [x] Fixed WebSocket EventCallback type error
 - [x] Moved @tanstack/react-query-devtools to dependencies (was in devDependencies)
-- [ ] Run git pull and npm install on Container 440
-- [ ] Verify npm run build succeeds
+- [x] Run git pull and npm install on Container 440
+- [x] Verify npm run build succeeds
 
-### Tests (Phase 6) 📋 PENDING
+### Tests (Phase 6) ✅ COMPLETE
 
-- [ ] Run backend tests: `npm test -- --run` on Container 441
-- [ ] Run frontend tests: `npm test -- --run` on Container 440
+- [x] Run backend tests: `npm test -- --run` on Container 441 (438 passed, 10 pre-existing failures)
+- [x] Run frontend tests: `npm test -- --run` on Container 440 (448 passed, 4 pre-existing failures)
+
+### Test Mock Fixes Applied
+
+| Fix                                | Description                              |
+| ---------------------------------- | ---------------------------------------- |
+| EventBus mock (backend)            | Added eventBus mock to FileService tests |
+| removeAllListeners mock (frontend) | Added to WebSocket mock                  |
+| Global fetch mock (frontend)       | Added for streaming API tests            |
 
 ### Commits Made
 
@@ -476,6 +484,7 @@ After completing any issue, verify:
 | 2201d8b | Switch to esbuild for backend build            |
 | 2ab0c4c | Exclude test configs from Next.js tsconfig     |
 | 840e7da | Move react-query-devtools to dependencies      |
+| 06e7703 | Fix test mocks for file.service and frontend   |
 
 ---
 
