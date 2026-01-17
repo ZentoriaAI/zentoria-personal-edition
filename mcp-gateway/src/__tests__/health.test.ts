@@ -233,6 +233,9 @@ describe('Health Service', () => {
 
   describe('Metrics', () => {
     it('should track response times', async () => {
+      // Reset mock since previous test may have set rejection
+      mockRedis.ping.mockResolvedValue('PONG');
+
       const start = Date.now();
       await mockRedis.ping();
       const latency = Date.now() - start;
