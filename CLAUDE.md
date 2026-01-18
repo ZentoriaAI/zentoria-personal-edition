@@ -11,6 +11,8 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 | Container Range | 400-423 (17 containers) |
 | Domain | zentoria.local / zentoria.ai |
 
+**Comprehensive Status:** See [STATUS.md](./STATUS.md) for full project status, test coverage, remediation summary, and future work.
+
 ---
 
 ## Container Architecture (Deployed)
@@ -873,10 +875,13 @@ npm run dev          # Development server
 
 ---
 
-**Version:** 1.7
+**Version:** 1.8
 **Last Updated:** January 18, 2026
 
 ### Changelog
+- v1.8: Added comprehensive STATUS.md with full project status, test coverage, and future work
+- v1.8: Verified all infrastructure services healthy (7/7 containers running)
+- v1.8: Confirmed all 1,079 tests passing (448 backend + 458 frontend + 64 E2E + security/integration)
 - v1.7: Adapted frontend API client to MCP backend architecture (localStorage-based chat, /mcp/ file endpoints)
 - v1.7: Changed authentication from Bearer token to X-API-Key header
 - v1.7: Updated 53 api-client tests to match new implementation (458 frontend tests total)
