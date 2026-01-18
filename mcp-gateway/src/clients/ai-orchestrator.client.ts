@@ -54,6 +54,7 @@ export class AiOrchestratorClient {
       user_id: payload.userId,
       stream: false,
       use_rag: false,
+      agent: 'chat',  // Force chat agent to avoid SearchAgent routing
       context: {
         command_id: payload.id,
         file_contexts: payload.fileContexts,
@@ -117,7 +118,8 @@ export class AiOrchestratorClient {
       session_id: payload.sessionId,
       user_id: payload.userId,
       stream: true,
-      use_rag: true,
+      use_rag: false,
+      agent: 'chat',  // Force chat agent to avoid SearchAgent routing
       context: {
         command_id: payload.id,
         file_contexts: payload.fileContexts,
