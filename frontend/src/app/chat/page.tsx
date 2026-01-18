@@ -114,6 +114,7 @@ export default function ChatPage() {
           },
           () => {
             setIsStreaming(false);
+            clearStreamingContent();
             queryClient.invalidateQueries({ queryKey: ['messages', convId] });
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
             resolve();
