@@ -64,8 +64,14 @@ export function FolderSidebar({
   const { data: folderData } = useQuery({
     queryKey: ['folders'],
     queryFn: () => chatApi.getFolderTree(),
-    onSuccess: (data) => setFolders(data.folders),
   });
+
+  // Sync folders to store when data changes
+  useEffect(() => {
+    if (folderData?.folders) {
+      setFolders(folderData.folders);
+    }
+  }, [folderData, setFolders]);
 
   // Fetch sessions
   const { data: sessionsData } = useQuery({
@@ -76,10 +82,14 @@ export function FolderSidebar({
         isArchived: showArchivedSessions,
         pageSize: 100,
       }),
-    onSuccess: (data) => {
-      useEnhancedChatStore.getState().setSessions(data.items);
-    },
   });
+
+  // Sync sessions to store when data changes
+  useEffect(() => {
+    if (sessionsData?.items) {
+      useEnhancedChatStore.getState().setSessions(sessionsData.items);
+    }
+  }, [sessionsData]);
 
   // State for folder editing (BUG-007)
   const [editingFolder, setEditingFolder] = useState<ProjectFolder | null>(null);
