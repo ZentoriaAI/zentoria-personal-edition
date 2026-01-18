@@ -68,12 +68,14 @@ export const fileRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
 
     const options = FileUploadMetadataSchema.parse({ purpose, metadata });
 
+    // Note: Size is calculated during upload in FileService (tracks uploadedSize)
+    // We pass 0 as initial hint since stream size isn't known upfront
     const result = await fileService.uploadFile(
       request.user.id,
       data.filename,
       data.mimetype,
       data.file,
-      data.file.bytesRead || 0, // Size may not be known until upload completes
+      0,
       options
     );
 

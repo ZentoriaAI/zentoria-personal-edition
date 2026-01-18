@@ -7,6 +7,7 @@ import { CommandRequestSchema } from '../services/command-processor.js'; // ARCH
 import { SendEmailSchema } from '../services/email.service.js';
 import { requireScope } from '../middleware/auth.js';
 import { Errors } from '../middleware/error-handler.js';
+import { checkRateLimit, RateLimitConfigs } from '../infrastructure/rate-limiter.js';
 
 export const mcpRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const commandService = fastify.container.resolve('commandService');
@@ -17,7 +18,33 @@ export const mcpRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =>
    * Process an AI command
    */
   fastify.post('/command', {
-    preHandler: requireScope('ai.chat'),
+    preHandler: [
+      requireScope('ai.chat'),
+      async (request, reply) => {
+        if (!request.user) return;
+        const redis = fastify.container.resolve('redis');
+        const result = await checkRateLimit(
+          redis,
+          request.user.id,
+          'ai-command',
+          RateLimitConfigs.aiCommand
+        );
+        if (!result.allowed) {
+          reply.header('X-RateLimit-Limit', result.limit);
+          reply.header('X-RateLimit-Remaining', result.remaining);
+          reply.header('X-RateLimit-Reset', Math.ceil(result.resetMs / 1000));
+          return reply.status(429).send({
+            error: {
+              code: 'RATE_LIMIT_EXCEEDED',
+              message: 'Too many AI command requests. Try again later.',
+              retryAfter: Math.ceil(result.resetMs / 1000),
+            },
+          });
+        }
+        reply.header('X-RateLimit-Limit', result.limit);
+        reply.header('X-RateLimit-Remaining', result.remaining);
+      },
+    ],
     schema: {
       tags: ['MCP'],
       summary: 'Process AI command',

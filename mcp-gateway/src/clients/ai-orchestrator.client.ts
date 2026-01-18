@@ -91,15 +91,20 @@ export class AiOrchestratorClient {
       session_id?: string;
       sources?: unknown[];
       metadata?: Record<string, unknown>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
     };
 
     return {
       content: chatResponse.message,
       model: payload.model,
       usage: {
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
+        promptTokens: chatResponse.usage?.prompt_tokens || 0,
+        completionTokens: chatResponse.usage?.completion_tokens || 0,
+        totalTokens: chatResponse.usage?.total_tokens || 0,
       },
       finishReason: 'stop',
       metadata: chatResponse.metadata,

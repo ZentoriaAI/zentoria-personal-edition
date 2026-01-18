@@ -60,9 +60,8 @@ export function authMiddleware(container: AwilixContainer<ContainerCradle>) {
 
     // Try JWT Bearer token
     if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
       try {
-        const user = await validateJwt(request, token);
+        const user = await validateJwt(request);
         if (user) {
           request.user = user;
           return;
@@ -129,10 +128,10 @@ async function validateApiKey(
 
 /**
  * Validate JWT token and return user info
+ * Uses request.jwtVerify() which reads token from Authorization header
  */
 async function validateJwt(
-  request: FastifyRequest,
-  token: string
+  request: FastifyRequest
 ): Promise<FastifyRequest['user'] | null> {
   try {
     const decoded = await request.jwtVerify<{
