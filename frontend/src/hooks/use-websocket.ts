@@ -467,13 +467,13 @@ export function __resetWebSocketManager(): void {
     } catch {
       // Ignore cleanup errors in tests
     }
-    manager['socket'] = null;
+    (manager as any)['socket'] = null;
   }
 
   // Reset state
-  manager['status'] = 'disconnected';
-  manager['refCount'] = 0;
-  manager['eventListeners'] = new Map();
-  manager['statusListeners'] = new Set();
-  manager['reconnectAttempts'] = 0;
+  (manager as any)['status'] = 'disconnected';
+  (manager as any)['refCount'] = 0;
+  (manager as any)['eventListeners'] = new Map();
+  (manager as any)['statusListeners'] = new Set();
+  (manager as any)['reconnectAttempts'] = 0;
 }
