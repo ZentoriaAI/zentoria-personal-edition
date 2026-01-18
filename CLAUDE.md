@@ -25,7 +25,7 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 | 410 | zentoria-pe-redis | 192.168.220.250 | Cache & Message Queue | 6379 | ✅ Running |
 | 440 | zentoria-pe-frontend | 192.168.220.240 | Web UI (Next.js) | 3000 | ✅ Running |
 | 441 | zentoria-pe-backend | 192.168.220.241 | MCP Core API (Fastify) | 3000 | ✅ Running |
-| 442 | zentoria-pe-nginx | 192.168.220.242 | NGINX Reverse Proxy | 80 | ✅ Running |
+| 442 | zentoria-pe-nginx | 192.168.220.242 | NGINX Reverse Proxy | 80, 443 | ✅ Running |
 | 443 | zentoria-pe-qdrant | 192.168.220.243 | Qdrant Vector DB | 6333 | ✅ Running |
 | 444 | zentoria-pe-ai | 192.168.220.245 | Ollama + AI Orchestrator | 11434, 8000 | ✅ Running |
 
@@ -33,10 +33,10 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 
 | Service | URL |
 |---------|-----|
-| **Main App** | http://192.168.220.242 |
-| **API** | http://192.168.220.242/api/ |
-| **AI** | http://192.168.220.242/ai/ |
-| **WebSocket** | ws://192.168.220.242/ws/ |
+| **Main App** | https://ai.zentoria.ai |
+| **API** | https://ai.zentoria.ai/api/ |
+| **AI** | https://ai.zentoria.ai/ai/ |
+| **WebSocket** | wss://ai.zentoria.ai/ws/ |
 
 ### Future Services (Not Yet Deployed)
 
@@ -78,6 +78,26 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 | `/ai/` | zentoria-pe-ai | 8000 |
 | `/ws/` | zentoria-pe-backend (WebSocket) | 3000 |
 | `/health` | Static response | - |
+
+### SSL/TLS Configuration
+
+| Component | Configuration |
+|-----------|---------------|
+| **Certificate** | Let's Encrypt (certbot) - EC 256 bits (SHA256withECDSA) |
+| **Valid Until** | March 20, 2026 |
+| **Cloudflare SSL Mode** | Full (strict) |
+| **Minimum TLS Version** | TLS 1.2 (Cloudflare setting) |
+| **Supported Protocols** | TLS 1.2, TLS 1.3 |
+| **SSL Labs Grade** | **A+** |
+| **HSTS** | Enabled with long duration |
+| **HTTP/2** | Enabled |
+
+**Security Headers (NGINX):**
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains`
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
 
 ---
 
@@ -124,7 +144,7 @@ All containers use `/opt/zentoria/{service}/`:
 
 ### Backend (441) - MCP Core API
 
-Base URL: `http://192.168.220.242/api/` (via NGINX)
+Base URL: `https://ai.zentoria.ai/api/` (via NGINX + Cloudflare Tunnel)
 
 ```
 POST /api/v1/mcp/command      # AI command processing
@@ -138,7 +158,7 @@ GET  /health                  # Health check (requires auth)
 
 ### AI Orchestrator (444)
 
-Base URL: `http://192.168.220.242/ai/` (via NGINX)
+Base URL: `https://ai.zentoria.ai/ai/` (via NGINX + Cloudflare Tunnel)
 
 ```
 POST /api/v1/chat             # Chat with AI
@@ -403,9 +423,9 @@ User Input → Frontend (440) → WebSocket → Backend (441)
 ### Environment (.env.local)
 
 ```env
-NEXT_PUBLIC_API_URL=http://192.168.220.242/api
-NEXT_PUBLIC_AI_URL=http://192.168.220.242/ai
-NEXT_PUBLIC_WS_URL=ws://192.168.220.242/ws
+NEXT_PUBLIC_API_URL=https://ai.zentoria.ai/api
+NEXT_PUBLIC_AI_URL=https://ai.zentoria.ai/ai
+NEXT_PUBLIC_WS_URL=wss://ai.zentoria.ai/ws
 NEXT_PUBLIC_API_KEY=znt_test_sk_NpjxMopze4q4ZCIdYrSbZ76ofxFBYynU
 ```
 
@@ -594,13 +614,13 @@ znt_test_sk_NpjxMopze4q4ZCIdYrSbZ76ofxFBYynU
 
 ```bash
 # Via header
-curl -H "X-API-Key: znt_test_sk_..." http://192.168.220.242/api/v1/health
+curl -H "X-API-Key: znt_test_sk_..." https://ai.zentoria.ai/api/v1/health
 
 # Test chat
 curl -X POST \
   -H "X-API-Key: znt_test_sk_NpjxMopze4q4ZCIdYrSbZ76ofxFBYynU" \
   -H "Content-Type: application/json" \
-  http://192.168.220.242/api/v1/mcp/command \
+  https://ai.zentoria.ai/api/v1/mcp/command \
   -d '{"command": "Hello"}'
 ```
 
@@ -799,14 +819,14 @@ const chatPayload = {
 ### Testing AI Commands
 
 ```bash
-# Test AI chat via NGINX
+# Test AI chat via HTTPS
 curl -X POST \
   -H "X-API-Key: znt_test_sk_NpjxMopze4q4ZCIdYrSbZ76ofxFBYynU" \
   -H "Content-Type: application/json" \
-  http://192.168.220.242/api/v1/mcp/command \
+  https://ai.zentoria.ai/api/v1/mcp/command \
   -d '{"command": "Hello"}'
 
-# Direct AI Orchestrator test
+# Direct AI Orchestrator test (internal)
 ssh root@100.121.19.12 "pct exec 444 -- curl -s localhost:8000/api/v1/health"
 ```
 
@@ -875,10 +895,17 @@ npm run dev          # Development server
 
 ---
 
-**Version:** 1.8
+**Version:** 1.10
 **Last Updated:** January 18, 2026
 
 ### Changelog
+- v1.10: Hardened TLS configuration - disabled TLS 1.0 and 1.1 via Cloudflare (Minimum TLS Version: 1.2)
+- v1.10: SSL Labs grade improved from B to A+ (ai.zentoria.ai)
+- v1.9: Implemented SSL/HTTPS for ai.zentoria.ai via Let's Encrypt (certbot)
+- v1.9: Added security headers (HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy)
+- v1.9: Enabled HTTP/2 on NGINX reverse proxy (Container 442)
+- v1.9: Configured Cloudflare Tunnel with HTTPS origin and Full (strict) SSL mode
+- v1.9: Updated all documentation URLs to use HTTPS/WSS
 - v1.8: Added comprehensive STATUS.md with full project status, test coverage, and future work
 - v1.8: Verified all infrastructure services healthy (7/7 containers running)
 - v1.8: Confirmed all 1,079 tests passing (448 backend + 458 frontend + 64 E2E + security/integration)
