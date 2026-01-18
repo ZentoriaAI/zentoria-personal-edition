@@ -101,6 +101,7 @@ export function CanvasPanel({ className }: CanvasPanelProps) {
     // Save current content as a new version before restoring
     const newVersion: CanvasVersion = {
       id: `ver_${nanoid(10)}`,
+      canvasId: activeCanvas.id,
       content: activeCanvas.content,
       createdAt: new Date().toISOString(),
       changeDescription: 'Saved before restore',
