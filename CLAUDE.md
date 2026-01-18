@@ -349,7 +349,11 @@ ssh root@100.121.19.12 "pct exec 443 -- curl localhost:6333/healthz"
 - [x] API key management (backend service + frontend UI)
 - [x] File upload handling (frontend UI + backend routes)
 
-### Phase 4: Extended Services 📋 PLANNED
+### Phase 4: Deployment & Operations ✅ IN PROGRESS
+- [x] CI/CD Pipeline (GitHub Actions)
+- [x] Deployment Scripts (deploy-backend.sh, deploy-frontend.sh, deploy.sh)
+- [x] Health Check Scripts (health-check.sh)
+- [x] Feature Flags Infrastructure (backend + frontend)
 - [ ] n8n Workflows (445)
 - [ ] Vault Secrets (446)
 - [ ] Monitoring/Grafana (447)
@@ -895,10 +899,121 @@ npm run dev          # Development server
 
 ---
 
-**Version:** 1.10
+## CI/CD & Deployment Infrastructure (v1.11)
+
+### Deployment Scripts
+
+Located in `/scripts/deploy/`:
+
+| Script | Purpose |
+|--------|---------|
+| `deploy-backend.sh` | Deploy MCP Gateway to Container 441 |
+| `deploy-frontend.sh` | Deploy Next.js to Container 440 |
+| `deploy.sh` | Orchestrated full deployment |
+| `health-check.sh` | Comprehensive 7-container monitoring |
+
+**Features:**
+- Zero-downtime deployments with rolling updates
+- Automatic rollback on failure
+- Health checks (30 retries, 10s interval)
+- Backup before deployment
+
+### GitHub Actions Workflows
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | Push/PR to main/develop | Build, test (448+458 tests), lint |
+| `deploy-proxmox.yml` | Version tags (v*.*.*) | Deploy to Proxmox containers |
+
+### Feature Flags
+
+**Backend:** `mcp-gateway/src/infrastructure/feature-flags.ts`
+**Routes:** `mcp-gateway/src/routes/feature-flags.ts`
+**Frontend:** `frontend/src/hooks/use-feature-flag.ts`
+
+```typescript
+// Backend usage
+import { FeatureFlagsManager } from './infrastructure/feature-flags.js';
+const flags = new FeatureFlagsManager(redis, db);
+const enabled = await flags.isEnabled('new-chat-ui', userId);
+
+// Frontend usage
+import { useFeatureFlag, FeatureGate } from '@/hooks/use-feature-flag';
+const isEnabled = useFeatureFlag('new-chat-ui');
+<FeatureGate flag="new-chat-ui"><NewComponent /></FeatureGate>
+```
+
+**API Endpoints:**
+- `GET /api/v1/feature-flags` - List all flags
+- `POST /api/v1/feature-flags` - Create flag
+- `PUT /api/v1/feature-flags/:id` - Update flag
+- `DELETE /api/v1/feature-flags/:id` - Delete flag
+- `GET /api/v1/feature-flags/:name/check` - Check if enabled for user
+
+### Deployment Documentation
+
+| File | Purpose |
+|------|---------|
+| `DEPLOYMENT-INDEX.md` | Navigation guide |
+| `DEPLOYMENT-QUICK-REFERENCE.md` | Essential commands |
+| `DEPLOYMENT-GUIDE.md` | Step-by-step procedures |
+| `DEPLOYMENT.md` | Technical architecture |
+| `DEPLOYMENT-SUMMARY.md` | Deliverables overview |
+
+### Quick Deploy Commands
+
+```bash
+# Full deployment
+./scripts/deploy/deploy.sh
+
+# Backend only
+./scripts/deploy/deploy-backend.sh
+
+# Frontend only
+./scripts/deploy/deploy-frontend.sh
+
+# Health check
+./scripts/health-check.sh
+
+# Via Git tag (triggers GitHub Actions)
+git tag -a v1.11.0 -m "Release v1.11.0"
+git push origin v1.11.0
+```
+
+### Live Deployment Status (Verified 2026-01-18)
+
+| Endpoint | Status | Response |
+|----------|--------|----------|
+| `https://ai.zentoria.ai/` | ✅ 200 | Frontend serving |
+| `https://ai.zentoria.ai/api/v1/health` | ✅ 200 | All dependencies healthy |
+| `https://ai.zentoria.ai/ai/health` | ✅ 200 | Ollama, Redis, Qdrant connected |
+| `https://ai.zentoria.ai/api/v1/mcp/command` | ✅ 200 | AI chat working |
+
+**SSL Certificate:** Valid until March 20, 2026 (Let's Encrypt)
+**SSL Grade:** A+ (SSL Labs)
+
+---
+
+**Version:** 1.13
 **Last Updated:** January 18, 2026
 
 ### Changelog
+- v1.13: Fixed 7 bugs across backend and frontend
+- v1.13: BUG-001 - Extract real token metrics from AI Orchestrator response
+- v1.13: BUG-002 - Clarify file upload size calculation (computed during upload)
+- v1.13: BUG-003 - Remove unused token parameter from validateJwt()
+- v1.13: BUG-004 - Add rate limiting (20 req/min) to /mcp/command endpoint
+- v1.13: BUG-005 - Add SSE backpressure handling to prevent memory leaks on client disconnect
+- v1.13: BUG-006 - Implement canvas version restore with history tracking
+- v1.13: BUG-007 - Implement folder edit modal with rename functionality
+- v1.12: Deployed CI/CD scripts to Proxmox containers (441, 440)
+- v1.12: Deployed feature flags infrastructure (backend + frontend)
+- v1.12: Verified live HTTPS deployment - all 7 services healthy
+- v1.12: Tested AI chat via https://ai.zentoria.ai/api/v1/mcp/command
+- v1.11: Added CI/CD infrastructure with GitHub Actions workflows
+- v1.11: Created deployment scripts (deploy-backend.sh, deploy-frontend.sh, deploy.sh, health-check.sh)
+- v1.11: Implemented feature flags system (backend + frontend)
+- v1.11: Added comprehensive deployment documentation (6 files)
 - v1.10: Hardened TLS configuration - disabled TLS 1.0 and 1.1 via Cloudflare (Minimum TLS Version: 1.2)
 - v1.10: SSL Labs grade improved from B to A+ (ai.zentoria.ai)
 - v1.9: Implemented SSL/HTTPS for ai.zentoria.ai via Let's Encrypt (certbot)
