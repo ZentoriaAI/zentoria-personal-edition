@@ -494,6 +494,7 @@ function FolderTreeItem({
               onToggle={() => useEnhancedChatStore.getState().toggleFolderExpanded(child.id)}
               onClick={() => useEnhancedChatStore.getState().setSelectedFolder(child.id)}
               onDelete={() => {}}
+              onEdit={() => {}}
             />
           ))}
         </div>
