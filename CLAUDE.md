@@ -504,12 +504,12 @@ npm run test:e2e:headed    # Visible browser
 | `src/stores/chat-store.test.ts` | 54 | Chat store, messages, streaming (PERF-011) |
 | `src/stores/file-store.test.ts` | 58 | File store, selection, uploads |
 | `src/hooks/use-websocket.test.ts` | 37 | WebSocket hooks (PERF-003) |
-| `src/lib/api-client.test.ts` | 47 | Axios API client |
+| `src/lib/api-client.test.ts` | 53 | API client (localStorage chat, MCP files) |
 | `src/lib/utils.test.ts` | 42 | Utility functions |
 | `src/components/ui/*.test.tsx` | 108 | Button, Badge, Card components |
 | `src/components/layout/*.test.tsx` | 75 | Header, Sidebar components |
 
-**Total Frontend Unit: 452 tests** ✅
+**Total Frontend Unit: 458 tests** ✅
 
 ### E2E Test Files (Playwright)
 
@@ -873,10 +873,14 @@ npm run dev          # Development server
 
 ---
 
-**Version:** 1.6
-**Last Updated:** January 17, 2026
+**Version:** 1.7
+**Last Updated:** January 18, 2026
 
 ### Changelog
+- v1.7: Adapted frontend API client to MCP backend architecture (localStorage-based chat, /mcp/ file endpoints)
+- v1.7: Changed authentication from Bearer token to X-API-Key header
+- v1.7: Updated 53 api-client tests to match new implementation (458 frontend tests total)
+- v1.7: Fixed TypeScript error in use-websocket.ts resetForTesting function
 - v1.6: Fixed all test failures - 448 backend tests + 452 frontend tests now passing
 - v1.6: Fixed input-sanitizer regex pattern tests (prompt_leaking, code_execution, medium_risk)
 - v1.6: Fixed health.test.ts mock state leakage
