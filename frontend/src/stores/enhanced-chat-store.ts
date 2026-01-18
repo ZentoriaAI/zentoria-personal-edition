@@ -363,6 +363,11 @@ export const selectCurrentSession = (state: EnhancedChatState): ChatSession | nu
   return state.sessions.find((s) => s.id === state.currentSessionId) || null;
 };
 
+/** Select current session ID */
+export const selectCurrentSessionId = (state: EnhancedChatState): string | null => {
+  return state.currentSessionId;
+};
+
 /** Select messages for current session */
 export const selectCurrentMessages = (state: EnhancedChatState): EnhancedChatMessage[] => {
   if (!state.currentSessionId) return [];
