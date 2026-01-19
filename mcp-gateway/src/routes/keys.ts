@@ -368,7 +368,7 @@ Zentoria Team`,
         type: 'object',
         required: ['keyId'],
         properties: {
-          keyId: { type: 'string', pattern: '^key_[a-zA-Z0-9]+$' },
+          keyId: { type: 'string', pattern: '^key_[a-zA-Z0-9_-]+$' },
         },
       },
       response: {
