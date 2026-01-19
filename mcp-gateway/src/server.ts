@@ -178,7 +178,7 @@ async function registerRoutes(server: FastifyInstance): Promise<void> {
   // API routes (auth required)
   await server.register(mcpRoutes, { prefix: '/api/v1/mcp' });
   await server.register(fileRoutes, { prefix: '/api/v1/mcp' });
-  await server.register(keyRoutes, { prefix: '/api/v1' });
+  await server.register(keyRoutes, { prefix: '/api/v1/mcp' });
   await server.register(workflowRoutes, { prefix: '/api/v1/workflows' });
   await server.register(logsRoutes, { prefix: '/api/v1/logs' });
 
