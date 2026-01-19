@@ -454,7 +454,9 @@
 
 /* Kbd styling */
 kbd {
-  @apply font-mono text-xs bg-muted px-1.5 py-0.5 rounded border border-border shadow-sm;
+  @apply font-mono text-xs px-1.5 py-0.5 rounded shadow-sm;
+  background-color: rgb(var(--muted));
+  border: 1px solid rgb(var(--border));
 }
 
 /* Touch-friendly targets */
@@ -623,7 +625,8 @@ kbd {
 /* Active state for touch */
 @media (hover: none) {
   .touch-active:active {
-    @apply bg-muted/50 scale-[0.98];
+    @apply scale-[0.98];
+    background-color: rgb(var(--muted) / 0.5);
     transition: transform 0.1s ease;
   }
 }

@@ -34,7 +34,7 @@ import {
   ArrowUpAZ,
   Calendar,
   HardDrive,
-  FileType,
+  FileType as FileTypeIcon,
   CheckCircle2,
   FolderInput,
   RefreshCw,
@@ -77,7 +77,7 @@ const sortOptions = [
   { value: 'name', label: 'Name', icon: ArrowDownAZ },
   { value: 'date', label: 'Date modified', icon: Calendar },
   { value: 'size', label: 'Size', icon: HardDrive },
-  { value: 'type', label: 'Type', icon: FileType },
+  { value: 'type', label: 'Type', icon: FileTypeIcon },
 ] as const;
 
 export default function FilesPage() {
@@ -850,9 +850,7 @@ function FileGridItem({ file, selected, onClick, onSelect, onDelete, onRename, o
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={(e) => {
-                onDelete();
-              }}
+              onClick={() => onDelete()}
               icon={<Trash2 className="h-4 w-4 text-red-500" />}
             >
               <span className="text-red-500">Delete</span>
