@@ -159,12 +159,13 @@ export async function skipWaiting(): Promise<void> {
  * Clear all caches managed by the service worker
  */
 export async function clearCache(): Promise<void> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     console.log('[SW] No active service worker');
     return;
   }
 
-  navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+  controller.postMessage({ type: 'CLEAR_CACHE' });
   console.log('[SW] Cache clear requested');
 }
 
@@ -172,7 +173,8 @@ export async function clearCache(): Promise<void> {
  * Get the current cache status
  */
 export async function getCacheStatus(): Promise<CacheStatus | null> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     return null;
   }
 
@@ -183,7 +185,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
+    controller.postMessage(
       { type: 'GET_CACHE_STATUS' },
       [channel.port2]
     );
@@ -197,12 +199,13 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
  * Pre-cache specific URLs
  */
 export async function cacheUrls(urls: string[]): Promise<void> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     console.log('[SW] No active service worker');
     return;
   }
 
-  navigator.serviceWorker.controller.postMessage({
+  controller.postMessage({
     type: 'CACHE_URLS',
     payload: { urls },
   });
@@ -283,7 +286,8 @@ export function onServiceWorkerMessage(
  * Send a message to the service worker
  */
 export async function sendMessageToSW(message: unknown): Promise<unknown> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     throw new Error('No active service worker');
   }
 
@@ -302,7 +306,7 @@ export async function sendMessageToSW(message: unknown): Promise<unknown> {
       reject(new Error('Message error'));
     };
 
-    navigator.serviceWorker.controller.postMessage(message, [channel.port2]);
+    controller.postMessage(message, [channel.port2]);
 
     // Timeout after 10 seconds
     setTimeout(() => reject(new Error('Message timeout')), 10000);
@@ -384,7 +388,8 @@ export interface SyncStats {
  * Queue a message for offline sync
  */
 export async function queueOfflineMessage(message: PendingMessage): Promise<{ success: boolean; id?: number; error?: string }> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     throw new Error('No active service worker');
   }
 
@@ -395,7 +400,7 @@ export async function queueOfflineMessage(message: PendingMessage): Promise<{ su
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
+    controller.postMessage(
       { type: 'QUEUE_MESSAGE', payload: message },
       [channel.port2]
     );
@@ -409,7 +414,8 @@ export async function queueOfflineMessage(message: PendingMessage): Promise<{ su
  * Get sync statistics
  */
 export async function getSyncStats(): Promise<SyncStats | null> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     return null;
   }
 
@@ -420,7 +426,7 @@ export async function getSyncStats(): Promise<SyncStats | null> {
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
+    controller.postMessage(
       { type: 'GET_SYNC_STATS' },
       [channel.port2]
     );
@@ -434,7 +440,8 @@ export async function getSyncStats(): Promise<SyncStats | null> {
  * Trigger manual sync
  */
 export async function triggerSync(): Promise<{ success: boolean; error?: string }> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     throw new Error('No active service worker');
   }
 
@@ -445,7 +452,7 @@ export async function triggerSync(): Promise<{ success: boolean; error?: string 
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
+    controller.postMessage(
       { type: 'TRIGGER_SYNC' },
       [channel.port2]
     );
@@ -459,7 +466,8 @@ export async function triggerSync(): Promise<{ success: boolean; error?: string 
  * Clear all pending messages
  */
 export async function clearPendingMessages(): Promise<{ success: boolean; error?: string }> {
-  if (!navigator.serviceWorker.controller) {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) {
     throw new Error('No active service worker');
   }
 
@@ -470,7 +478,7 @@ export async function clearPendingMessages(): Promise<{ success: boolean; error?
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
+    controller.postMessage(
       { type: 'CLEAR_PENDING' },
       [channel.port2]
     );
@@ -545,7 +553,7 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubsc
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey,
+      applicationServerKey: applicationServerKey.buffer as ArrayBuffer,
     });
 
     console.log('[SW] Push subscription:', subscription);
