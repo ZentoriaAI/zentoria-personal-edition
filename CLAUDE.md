@@ -922,7 +922,7 @@ Located in `/scripts/deploy/`:
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yml` | Push/PR to main/develop | Build, test (448+458 tests), lint |
+| `ci.yml` | Push/PR to main/develop | Build, test (448+560 tests), lint |
 | `deploy-proxmox.yml` | Version tags (v*.*.*) | Deploy to Proxmox containers |
 
 ### Feature Flags
@@ -994,10 +994,13 @@ git push origin v1.11.0
 
 ---
 
-**Version:** 1.13
-**Last Updated:** January 18, 2026
+**Version:** 1.14
+**Last Updated:** January 19, 2026
 
 ### Changelog
+- v1.14: Fixed React infinite loop in chat components using useEnhancedChatStore.getState() pattern
+- v1.14: Fixed AbortController test mocking for jsdom compatibility in chat-api.test.ts
+- v1.14: All 560 frontend tests now passing (was 458)
 - v1.13: Fixed 7 bugs across backend and frontend
 - v1.13: BUG-001 - Extract real token metrics from AI Orchestrator response
 - v1.13: BUG-002 - Clarify file upload size calculation (computed during upload)
