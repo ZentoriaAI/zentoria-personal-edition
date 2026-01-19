@@ -15,7 +15,14 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { haptics } from '@/lib/haptics';
 import { chatApi } from '@/lib/chat-api';
 import {
   useEnhancedChatStore,
@@ -260,5 +267,134 @@ export function AgentBadge({ agent, size = 'md' }: AgentBadgeProps) {
       </span>
       <span className="font-medium">{agent.displayName}</span>
     </div>
+  );
+}
+
+/**
+ * Mobile Agent Selector Modal
+ * Full-screen bottom sheet for selecting agents on mobile
+ */
+interface MobileAgentSelectorProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect?: (agent: Agent) => void;
+}
+
+export function MobileAgentSelector({
+  isOpen,
+  onClose,
+  onSelect,
+}: MobileAgentSelectorProps) {
+  const agents = useEnhancedChatStore(selectAgents);
+  const currentAgent = useEnhancedChatStore(selectCurrentAgent);
+  const setSelectedAgent = useEnhancedChatStore((state) => state.setSelectedAgent);
+
+  // Fetch agents
+  useQuery({
+    queryKey: ['agents'],
+    queryFn: async () => {
+      const data = await chatApi.getAgents();
+      useEnhancedChatStore.getState().setAgents(data.agents);
+      return data.agents;
+    },
+  });
+
+  const handleSelect = (agent: Agent) => {
+    haptics.selection();
+    setSelectedAgent(agent.id);
+    onSelect?.(agent);
+    onClose();
+  };
+
+  return (
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="bottom" className="h-[85vh] pb-safe">
+        <SheetHeader className="text-left px-4 py-3 border-b">
+          <SheetTitle>Kies een Agent</SheetTitle>
+        </SheetHeader>
+
+        {/* Agent grid */}
+        <div className="overflow-y-auto h-[calc(100%-60px)] p-4">
+          <div className="grid gap-3">
+            {agents.map((agent) => (
+              <button
+                key={agent.id}
+                onClick={() => handleSelect(agent)}
+                className={cn(
+                  'w-full flex items-start gap-4 p-4 rounded-xl transition-all',
+                  'border text-left touch-manipulation',
+                  currentAgent?.id === agent.id
+                    ? 'border-zentoria-500 bg-zentoria-500/5'
+                    : 'border-transparent bg-muted/50 hover:bg-muted'
+                )}
+              >
+                {/* Icon */}
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                  style={{
+                    backgroundColor: agent.color ? `${agent.color}20` : 'var(--light-hover)',
+                    color: agent.color || 'var(--zentoria-500)',
+                  }}
+                >
+                  {agentIcons[agent.name] || <Bot className="h-6 w-6" />}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold truncate">
+                      {agent.displayName}
+                    </span>
+                    {agent.isDefault && (
+                      <Badge variant="secondary" className="text-xs">
+                        Standaard
+                      </Badge>
+                    )}
+                    {currentAgent?.id === agent.id && (
+                      <Check className="h-5 w-5 text-zentoria-500 ml-auto shrink-0" />
+                    )}
+                  </div>
+                  {agent.description && (
+                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                      {agent.description}
+                    </p>
+                  )}
+                  {/* Capabilities */}
+                  {agent.capabilities.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {agent.capabilities.slice(0, 4).map((cap) => (
+                        <Badge
+                          key={cap}
+                          variant="outline"
+                          className="text-xs"
+                        >
+                          {cap}
+                        </Badge>
+                      ))}
+                      {agent.capabilities.length > 4 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{agent.capabilities.length - 4}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  {/* Model info */}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Model: {agent.model}
+                  </p>
+                </div>
+              </button>
+            ))}
+
+            {agents.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Geen agents beschikbaar</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -192,3 +192,24 @@ export function requireScope(...requiredScopes: string[]) {
     }
   };
 }
+
+/**
+ * Simple authentication check middleware
+ * Use this when you just need to verify the user is logged in
+ *
+ * Usage: fastify.addHook('onRequest', requireAuth)
+ */
+export async function requireAuth(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  if (!request.user) {
+    return reply.status(401).send({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required',
+        requestId: request.id,
+      },
+    });
+  }
+}

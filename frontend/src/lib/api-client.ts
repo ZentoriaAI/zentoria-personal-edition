@@ -17,25 +17,35 @@ import type {
   SystemSettings,
   LogEntry,
   LogFilter,
+  AuthSession,
+  FeatureFlag,
+  FeatureFlagResult,
+  CreateFeatureFlagRequest,
+  AvailableModel,
 } from '@/types';
+import { getStoredApiKey, logout } from '@/lib/auth';
 
 // ============================
 // API Client Configuration
 // ============================
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://10.10.40.101:4000';
-const DEFAULT_API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!API_URL) {
+  console.warn('NEXT_PUBLIC_API_URL is not set. API calls will fail.');
+}
 
 class ApiClient {
   private client: AxiosInstance;
   private apiKey: string | null = null;
 
   constructor() {
-    // Auto-initialize with API key from environment
-    this.apiKey = DEFAULT_API_KEY || null;
+    // Auto-initialize with API key from localStorage (client-side only)
+    if (typeof window !== 'undefined') {
+      this.apiKey = getStoredApiKey();
+    }
 
     this.client = axios.create({
-      baseURL: `${API_URL}/api/v1`,
+      baseURL: API_URL ? `${API_URL}/api/v1` : '/api/v1',
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -45,8 +55,10 @@ class ApiClient {
     // Request interceptor - use X-API-Key header for API key authentication
     this.client.interceptors.request.use(
       (config) => {
-        if (this.apiKey) {
-          config.headers['X-API-Key'] = this.apiKey;
+        // Always try to get latest API key from storage
+        const currentKey = this.apiKey || (typeof window !== 'undefined' ? getStoredApiKey() : null);
+        if (currentKey) {
+          config.headers['X-API-Key'] = currentKey;
         }
         return config;
       },
@@ -57,6 +69,15 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError<ApiResponse>) => {
+        // Handle 401 Unauthorized - redirect to login
+        if (error.response?.status === 401) {
+          console.error('Authentication failed, redirecting to login');
+          if (typeof window !== 'undefined') {
+            logout();
+          }
+          return Promise.reject(new Error('Session expired. Please log in again.'));
+        }
+
         const message = error.response?.data?.error || error.message || 'Network error';
         console.error(`API Error: ${message}`);
         return Promise.reject(new Error(message));
@@ -219,7 +240,15 @@ class ApiClient {
     return responseMsg;
   }
 
-  // Streaming chat - uses MCP command endpoint
+  /**
+   * Send message and get response (no fake streaming - honest single response)
+   *
+   * @param request - Chat request with message and conversationId
+   * @param onChunk - Called with the full response content
+   * @param onError - Called on error
+   * @param onComplete - Called when response is complete
+   * @returns Abort function to cancel the request
+   */
   streamMessage(
     request: ChatRequest,
     onChunk: (chunk: string) => void,
@@ -254,15 +283,26 @@ class ApiClient {
       }
     }
 
-    // Send to MCP command endpoint (non-streaming since backend may not support streaming)
     // Convert conversationId to sessionId format (sess_xxx)
     const sessionId = request.conversationId ? `sess_${request.conversationId.replace('conv_', '')}` : undefined;
 
-    fetch(`${API_URL}/api/v1/mcp/command`, {
+    // Get current API key from storage
+    const currentApiKey = this.apiKey || (typeof window !== 'undefined' ? getStoredApiKey() : null);
+    const baseUrl = API_URL || '';
+
+    // Validate we have a base URL
+    if (!baseUrl) {
+      setTimeout(() => {
+        onError(new Error('API URL not configured. Please check NEXT_PUBLIC_API_URL environment variable.'));
+      }, 0);
+      return () => {};
+    }
+
+    fetch(`${baseUrl}/api/v1/mcp/command`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.apiKey ? { 'X-API-Key': this.apiKey } : {}),
+        ...(currentApiKey ? { 'X-API-Key': currentApiKey } : {}),
       },
       body: JSON.stringify({
         command: request.message,
@@ -271,19 +311,33 @@ class ApiClient {
       signal: controller.signal,
     })
       .then(async (response) => {
+        // Handle authentication errors
+        if (response.status === 401) {
+          if (typeof window !== 'undefined') {
+            logout();
+          }
+          throw new Error('Session expired. Please log in again.');
+        }
+
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || `HTTP ${response.status}`);
+          const errorMessage = errorData.error?.message || errorData.message || errorData.error || `Request failed (${response.status})`;
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();
-        const content = data.content || data.data?.content || 'No response from AI';
+
+        // Validate response structure
+        const content = this.extractResponseContent(data);
+        if (!content) {
+          throw new Error('Invalid response format from server');
+        }
 
         // Save assistant message locally
         if (request.conversationId) {
           const messages = this.getLocalMessages(request.conversationId);
           const assistantMsg: ChatMessage = {
-            id: data.id || `msg_${Date.now()}_assistant`,
+            id: data.id || data.data?.id || `msg_${Date.now()}_assistant`,
             conversationId: request.conversationId,
             role: 'assistant',
             content: content,
@@ -293,27 +347,40 @@ class ApiClient {
           this.saveLocalMessages(request.conversationId, messages);
         }
 
-        // Simulate streaming by sending content in chunks
-        const words = content.split(' ');
-        let i = 0;
-        const interval = setInterval(() => {
-          if (i < words.length) {
-            onChunk(words[i] + (i < words.length - 1 ? ' ' : ''));
-            i++;
-          } else {
-            clearInterval(interval);
-            onComplete();
-          }
-        }, 30);
+        // Send full response at once (no fake streaming)
+        onChunk(content);
+        onComplete();
       })
       .catch((error) => {
         if (error.name !== 'AbortError') {
-          onError(error);
+          onError(error instanceof Error ? error : new Error(String(error)));
         }
       });
 
     // Return abort function
     return () => controller.abort();
+  }
+
+  /**
+   * Extract content from various response formats
+   */
+  private extractResponseContent(data: unknown): string | null {
+    if (!data || typeof data !== 'object') return null;
+
+    const response = data as Record<string, unknown>;
+
+    // Try different response formats
+    if (typeof response.content === 'string') return response.content;
+    if (response.data && typeof response.data === 'object') {
+      const nested = response.data as Record<string, unknown>;
+      if (typeof nested.content === 'string') return nested.content;
+      if (typeof nested.response === 'string') return nested.response;
+      if (typeof nested.message === 'string') return nested.message;
+    }
+    if (typeof response.response === 'string') return response.response;
+    if (typeof response.message === 'string' && !response.error) return response.message;
+
+    return null;
   }
 
   // ============================
@@ -485,6 +552,169 @@ class ApiClient {
       '/settings',
       settings
     );
+    return data.data!;
+  }
+
+  // ============================
+  // Authentication Endpoints
+  // ============================
+
+  async refreshToken(): Promise<{ token: string; expiresAt: string }> {
+    const { data } = await this.client.post<ApiResponse<{ token: string; expiresAt: string }>>(
+      '/auth/refresh'
+    );
+    return data.data!;
+  }
+
+  async logoutSession(): Promise<void> {
+    await this.client.post('/auth/logout');
+  }
+
+  async logoutAllSessions(): Promise<{ count: number }> {
+    const { data } = await this.client.post<ApiResponse<{ count: number }>>('/auth/logout-all');
+    return data.data!;
+  }
+
+  async getAuthSessions(): Promise<{ sessions: AuthSession[] }> {
+    const { data } = await this.client.get<ApiResponse<{ sessions: AuthSession[] }>>('/auth/sessions');
+    return data.data!;
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.client.delete(`/auth/sessions/${sessionId}`);
+  }
+
+  async generateToken(scopes: string[]): Promise<{ token: string; expiresAt: string }> {
+    const { data } = await this.client.post<ApiResponse<{ token: string; expiresAt: string }>>(
+      '/auth/token',
+      { scopes }
+    );
+    return data.data!;
+  }
+
+  // ============================
+  // Feature Flag Endpoints
+  // ============================
+
+  async listFeatureFlags(): Promise<Record<string, FeatureFlag>> {
+    const { data } = await this.client.get<ApiResponse<Record<string, FeatureFlag>>>('/features');
+    return data.data!;
+  }
+
+  async getFeatureFlag(name: string): Promise<FeatureFlag> {
+    const { data } = await this.client.get<ApiResponse<FeatureFlag>>(`/features/${name}`);
+    return data.data!;
+  }
+
+  async checkFeatureFlag(name: string, userId?: string): Promise<FeatureFlagResult> {
+    const { data } = await this.client.post<ApiResponse<FeatureFlagResult>>(
+      `/features/${name}/check`,
+      { userId }
+    );
+    return data.data!;
+  }
+
+  async createFeatureFlag(flag: CreateFeatureFlagRequest): Promise<FeatureFlag> {
+    const { data } = await this.client.post<ApiResponse<FeatureFlag>>('/features', flag);
+    return data.data!;
+  }
+
+  async updateFeatureFlag(name: string, updates: Partial<FeatureFlag>): Promise<FeatureFlag> {
+    const { data } = await this.client.put<ApiResponse<FeatureFlag>>(`/features/${name}`, updates);
+    return data.data!;
+  }
+
+  async deleteFeatureFlag(name: string): Promise<void> {
+    await this.client.delete(`/features/${name}`);
+  }
+
+  async setFeatureFlagRollout(name: string, percentage: number): Promise<FeatureFlag> {
+    const { data } = await this.client.post<ApiResponse<FeatureFlag>>(
+      `/features/${name}/rollout`,
+      { rolloutPercentage: percentage }
+    );
+    return data.data!;
+  }
+
+  async addFeatureFlagException(name: string, userId: string, enabled: boolean): Promise<FeatureFlag> {
+    const { data } = await this.client.post<ApiResponse<FeatureFlag>>(
+      `/features/${name}/exceptions`,
+      { userId, enabled }
+    );
+    return data.data!;
+  }
+
+  async removeFeatureFlagException(name: string, userId: string): Promise<FeatureFlag> {
+    const { data } = await this.client.delete<ApiResponse<FeatureFlag>>(
+      `/features/${name}/exceptions/${userId}`
+    );
+    return data.data!;
+  }
+
+  async blockUserFromFeatureFlag(name: string, userId: string): Promise<FeatureFlag> {
+    const { data } = await this.client.post<ApiResponse<FeatureFlag>>(
+      `/features/${name}/block`,
+      { userId }
+    );
+    return data.data!;
+  }
+
+  async unblockUserFromFeatureFlag(name: string, userId: string): Promise<FeatureFlag> {
+    const { data } = await this.client.delete<ApiResponse<FeatureFlag>>(
+      `/features/${name}/blocked/${userId}`
+    );
+    return data.data!;
+  }
+
+  // ============================
+  // Extended Settings Endpoints
+  // ============================
+
+  async resetSettings(): Promise<SystemSettings> {
+    const { data } = await this.client.post<ApiResponse<SystemSettings>>('/settings/reset');
+    return data.data!;
+  }
+
+  async getAvailableModels(): Promise<AvailableModel[]> {
+    const { data } = await this.client.get<ApiResponse<{ models: AvailableModel[] }>>('/settings/models');
+    return data.data!.models;
+  }
+
+  async createCustomPrompt(prompt: { name: string; content: string; category?: string }): Promise<SystemSettings> {
+    const { data } = await this.client.post<ApiResponse<SystemSettings>>('/settings/prompts', prompt);
+    return data.data!;
+  }
+
+  async deleteCustomPrompt(id: string): Promise<SystemSettings> {
+    const { data } = await this.client.delete<ApiResponse<SystemSettings>>(`/settings/prompts/${id}`);
+    return data.data!;
+  }
+
+  async exportSettings(): Promise<Blob> {
+    const response = await this.client.get<Blob>('/settings/export', {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async importSettings(data: Record<string, unknown>): Promise<SystemSettings> {
+    const { data: result } = await this.client.post<ApiResponse<SystemSettings>>('/settings/import', data);
+    return result.data!;
+  }
+
+  // ============================
+  // Health Check Extended
+  // ============================
+
+  async getHealthReady(): Promise<{ ready: boolean; checks: Record<string, boolean> }> {
+    const { data } = await this.client.get<ApiResponse<{ ready: boolean; checks: Record<string, boolean> }>>(
+      '/health/ready'
+    );
+    return data.data!;
+  }
+
+  async getHealthLive(): Promise<{ alive: boolean }> {
+    const { data } = await this.client.get<ApiResponse<{ alive: boolean }>>('/health/live');
     return data.data!;
   }
 

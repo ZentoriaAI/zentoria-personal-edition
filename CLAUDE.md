@@ -4,12 +4,12 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 
 ## Project Overview
 
-| Aspect | Value |
-|--------|-------|
-| Type | Self-Hosted Personal Edition |
-| Platform | Proxmox VE (LXC Containers) |
-| Container Range | 400-423 (17 containers) |
-| Domain | zentoria.local / zentoria.ai |
+| Aspect          | Value                        |
+| --------------- | ---------------------------- |
+| Type            | Self-Hosted Personal Edition |
+| Platform        | Proxmox VE (LXC Containers)  |
+| Container Range | 400-423 (17 containers)      |
+| Domain          | zentoria.local / zentoria.ai |
 
 **Comprehensive Status:** See [STATUS.md](./STATUS.md) for full project status, test coverage, remediation summary, and future work.
 
@@ -19,40 +19,41 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 
 ### Core Services (Active)
 
-| LXC | Hostname | IP | Role | Port(s) | Status |
-|-----|----------|-----|------|---------|--------|
-| 404 | zentoria-pe-db | 192.168.220.244 | PostgreSQL + pgvector | 5432 | ✅ Running |
-| 410 | zentoria-pe-redis | 192.168.220.250 | Cache & Message Queue | 6379 | ✅ Running |
-| 440 | zentoria-pe-frontend | 192.168.220.240 | Web UI (Next.js) | 3000 | ✅ Running |
-| 441 | zentoria-pe-backend | 192.168.220.241 | MCP Core API (Fastify) | 3000 | ✅ Running |
-| 442 | zentoria-pe-nginx | 192.168.220.242 | NGINX Reverse Proxy | 80, 443 | ✅ Running |
-| 443 | zentoria-pe-qdrant | 192.168.220.243 | Qdrant Vector DB | 6333 | ✅ Running |
-| 444 | zentoria-pe-ai | 192.168.220.245 | Ollama + AI Orchestrator | 11434, 8000 | ✅ Running |
+| LXC | Hostname             | IP              | Role                     | Port(s)     | Status    |
+| --- | -------------------- | --------------- | ------------------------ | ----------- | --------- |
+| 404 | zentoria-pe-db       | 192.168.220.244 | PostgreSQL + pgvector    | 5432        | ✅ Running |
+| 410 | zentoria-pe-redis    | 192.168.220.250 | Cache & Message Queue    | 6379        | ✅ Running |
+| 440 | zentoria-pe-frontend | 192.168.220.240 | Web UI (Next.js)         | 3000        | ✅ Running |
+| 441 | zentoria-pe-backend  | 192.168.220.241 | MCP Core API (Fastify)   | 3000        | ✅ Running |
+| 442 | zentoria-pe-nginx    | 192.168.220.242 | NGINX Reverse Proxy      | 80, 443     | ✅ Running |
+| 443 | zentoria-pe-qdrant   | 192.168.220.243 | Qdrant Vector DB         | 6333        | ✅ Running |
+| 444 | zentoria-pe-ai       | 192.168.220.245 | Ollama + AI Orchestrator | 11434, 8000 | ✅ Running |
 
 ### Access URLs
 
-| Service | URL |
-|---------|-----|
-| **Main App** | https://ai.zentoria.ai |
-| **API** | https://ai.zentoria.ai/api/ |
-| **AI** | https://ai.zentoria.ai/ai/ |
-| **WebSocket** | wss://ai.zentoria.ai/ws/ |
+| Service       | URL                         |
+| ------------- | --------------------------- |
+| **Main App**  | https://ai.zentoria.ai      |
+| **API**       | https://ai.zentoria.ai/api/ |
+| **AI**        | https://ai.zentoria.ai/ai/  |
+| **WebSocket** | wss://ai.zentoria.ai/ws/    |
 
 ### Future Services (Not Yet Deployed)
 
-| LXC | Hostname | Planned Role |
-|-----|----------|--------------|
-| 445 | zentoria-pe-n8n | Workflow Automation |
-| 446 | zentoria-pe-vault | Secrets Management |
-| 447 | zentoria-pe-logs | Prometheus + Grafana |
+| LXC | Hostname          | Planned Role         |
+| --- | ----------------- | -------------------- |
+| 445 | zentoria-pe-n8n   | Workflow Automation  |
+| 446 | zentoria-pe-vault | Secrets Management   |
+| 447 | zentoria-pe-logs  | Prometheus + Grafana |
 | 448 | zentoria-pe-files | MinIO Object Storage |
-| 449 | zentoria-pe-auth | JWT Authentication |
+| 449 | zentoria-pe-auth  | JWT Authentication   |
 
 ---
 
 ## Network Architecture
 
 ### Internal Network
+
 - Subnet: `192.168.220.0/24`
 - Hostname pattern: `zentoria-pe-{service}`
 
@@ -71,28 +72,29 @@ Self-hosted AI Control Plane on Proxmox. Single-user system with centralized AI 
 
 ### NGINX Routing (Container 442)
 
-| Path | Upstream | Port |
-|------|----------|------|
-| `/` | zentoria-pe-frontend | 3000 |
-| `/api/` | zentoria-pe-backend | 3000 |
-| `/ai/` | zentoria-pe-ai | 8000 |
-| `/ws/` | zentoria-pe-backend (WebSocket) | 3000 |
-| `/health` | Static response | - |
+| Path      | Upstream                        | Port |
+| --------- | ------------------------------- | ---- |
+| `/`       | zentoria-pe-frontend            | 3000 |
+| `/api/`   | zentoria-pe-backend             | 3000 |
+| `/ai/`    | zentoria-pe-ai                  | 8000 |
+| `/ws/`    | zentoria-pe-backend (WebSocket) | 3000 |
+| `/health` | Static response                 | -    |
 
 ### SSL/TLS Configuration
 
-| Component | Configuration |
-|-----------|---------------|
-| **Certificate** | Let's Encrypt (certbot) - EC 256 bits (SHA256withECDSA) |
-| **Valid Until** | March 20, 2026 |
-| **Cloudflare SSL Mode** | Full (strict) |
-| **Minimum TLS Version** | TLS 1.2 (Cloudflare setting) |
-| **Supported Protocols** | TLS 1.2, TLS 1.3 |
-| **SSL Labs Grade** | **A+** |
-| **HSTS** | Enabled with long duration |
-| **HTTP/2** | Enabled |
+| Component               | Configuration                                           |
+| ----------------------- | ------------------------------------------------------- |
+| **Certificate**         | Let's Encrypt (certbot) - EC 256 bits (SHA256withECDSA) |
+| **Valid Until**         | March 20, 2026                                          |
+| **Cloudflare SSL Mode** | Full (strict)                                           |
+| **Minimum TLS Version** | TLS 1.2 (Cloudflare setting)                            |
+| **Supported Protocols** | TLS 1.2, TLS 1.3                                        |
+| **SSL Labs Grade**      | **A+**                                                  |
+| **HSTS**                | Enabled with long duration                              |
+| **HTTP/2**              | Enabled                                                 |
 
 **Security Headers (NGINX):**
+
 - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
@@ -185,13 +187,13 @@ POST /collections/{name}/points/search  # Search vectors
 
 ## AI Agents (444)
 
-| Agent | Function |
-|-------|----------|
-| Chat Agent | Conversation interface |
-| Code Agent | Code generation |
-| File Agent | File management |
-| Search Agent | Semantic search |
-| Workflow Agent | Automation triggers |
+| Agent          | Function               |
+| -------------- | ---------------------- |
+| Chat Agent     | Conversation interface |
+| Code Agent     | Code generation        |
+| File Agent     | File management        |
+| Search Agent   | Semantic search        |
+| Workflow Agent | Automation triggers    |
 
 ### Ollama Models (Installed)
 
@@ -208,28 +210,28 @@ nomic-embed-text     # Embeddings (274 MB)
 
 ### PostgreSQL (404) - 192.168.220.244
 
-| Database | Purpose |
-|----------|---------|
-| zentoria_main | Main application data |
+| Database         | Purpose                  |
+| ---------------- | ------------------------ |
+| zentoria_main    | Main application data    |
 | zentoria_vectors | AI embeddings (pgvector) |
 
 ### Redis (410) - 192.168.220.250
 
-| Function | Use Case |
-|----------|----------|
-| Session Cache | User sessions |
-| API Cache | Response caching |
-| Pub/Sub | Real-time events |
-| AI Memory | Short-term context |
+| Function      | Use Case           |
+| ------------- | ------------------ |
+| Session Cache | User sessions      |
+| API Cache     | Response caching   |
+| Pub/Sub       | Real-time events   |
+| AI Memory     | Short-term context |
 
 ### Qdrant (443) - 192.168.220.243
 
-| Collection | Content | Model |
-|------------|---------|-------|
-| documents | All documents | nomic-embed-text |
+| Collection   | Content              | Model            |
+| ------------ | -------------------- | ---------------- |
+| documents    | All documents        | nomic-embed-text |
 | chat_history | Conversation context | nomic-embed-text |
-| code | Code snippets | codellama |
-| knowledge | Wiki/docs | nomic-embed-text |
+| code         | Code snippets        | codellama        |
+| knowledge    | Wiki/docs            | nomic-embed-text |
 
 ---
 
@@ -268,6 +270,7 @@ admin.users     admin.settings
 ### Secrets (Vault 403)
 
 All credentials stored in Vault:
+
 - Database credentials
 - API keys
 - OAuth tokens
@@ -279,6 +282,7 @@ All credentials stored in Vault:
 ## Monitoring (406)
 
 ### Prometheus Metrics
+
 - Container CPU/Memory/Disk
 - API response times
 - Database connections
@@ -286,6 +290,7 @@ All credentials stored in Vault:
 - Workflow execution time
 
 ### Grafana Dashboards
+
 - System Overview
 - API Performance
 - AI Usage
@@ -293,6 +298,7 @@ All credentials stored in Vault:
 - Security Events
 
 ### Loki Logs
+
 - Application logs
 - Access logs
 - Error logs
@@ -332,17 +338,20 @@ ssh root@100.121.19.12 "pct exec 443 -- curl localhost:6333/healthz"
 ## Implementation Status
 
 ### Phase 1: Core Infrastructure ✅ COMPLETE
+
 - [x] PostgreSQL + pgvector (404)
 - [x] Redis (410)
 - [x] Qdrant Vector DB (443)
 - [x] NGINX Reverse Proxy (442)
 
 ### Phase 2: Application Layer ✅ COMPLETE
+
 - [x] Frontend - Next.js (440)
 - [x] Backend API - Fastify (441)
 - [x] AI Orchestrator + Ollama (444)
 
 ### Phase 3: Integration ✅ COMPLETE
+
 - [x] NGINX routing configured
 - [x] All services communicating
 - [x] Authentication flow (API key-based)
@@ -350,6 +359,7 @@ ssh root@100.121.19.12 "pct exec 443 -- curl localhost:6333/healthz"
 - [x] File upload handling (frontend UI + backend routes)
 
 ### Phase 4: Deployment & Operations ✅ IN PROGRESS
+
 - [x] CI/CD Pipeline (GitHub Actions)
 - [x] Deployment Scripts (deploy-backend.sh, deploy-frontend.sh, deploy.sh)
 - [x] Health Check Scripts (health-check.sh)
@@ -364,17 +374,20 @@ ssh root@100.121.19.12 "pct exec 443 -- curl localhost:6333/healthz"
 ## Hardware Requirements
 
 ### Minimum (Development)
+
 - CPU: 16 cores (3:1 overcommit)
 - RAM: 128 GB
 - Storage: 2 TB SSD
 
 ### Recommended (Production)
+
 - CPU: 32+ cores
 - RAM: 192-256 GB
 - Storage: 4+ TB NVMe
 - GPU: Optional (NVIDIA for AI)
 
 ### Total Container Resources
+
 - CPU: 52 cores allocated
 - RAM: 152 GB allocated
 - Storage: 2.17 TB allocated
@@ -398,6 +411,7 @@ LOG_LEVEL=info
 ## Data Flows
 
 ### Request Flow
+
 ```
 User → NGINX (442) → Frontend (440) → Backend (441)
                             ↓
@@ -405,6 +419,7 @@ User → NGINX (442) → Frontend (440) → Backend (441)
 ```
 
 ### RAG Flow
+
 ```
 Query → Backend (441) → AI (444) → Embedding → Qdrant (443) → Top-K chunks
                                                      ↓
@@ -412,6 +427,7 @@ Query → Backend (441) → AI (444) → Embedding → Qdrant (443) → Top-K ch
 ```
 
 ### Chat Flow
+
 ```
 User Input → Frontend (440) → WebSocket → Backend (441)
                                                ↓
@@ -450,14 +466,14 @@ NEXT_PUBLIC_API_KEY=znt_test_sk_NpjxMopze4q4ZCIdYrSbZ76ofxFBYynU
 
 ### Pages
 
-| Page | Path | Description |
-|------|------|-------------|
-| Dashboard | `/` | System status, stats |
-| Chat | `/chat` | AI chat interface |
-| Files | `/files` | File management (TODO) |
+| Page      | Path         | Description            |
+| --------- | ------------ | ---------------------- |
+| Dashboard | `/`          | System status, stats   |
+| Chat      | `/chat`      | AI chat interface      |
+| Files     | `/files`     | File management (TODO) |
 | Workflows | `/workflows` | n8n integration (TODO) |
-| API Keys | `/keys` | Key management (TODO) |
-| Settings | `/settings` | App settings (TODO) |
+| API Keys  | `/keys`      | Key management (TODO)  |
+| Settings  | `/settings`  | App settings (TODO)    |
 
 ### Commands
 
@@ -479,11 +495,11 @@ ssh root@100.121.19.12 'pct exec 440 -- tail -f /var/log/zentoria-frontend.log'
 
 ### Test Frameworks
 
-| Package | Framework | Environment |
-|---------|-----------|-------------|
-| **mcp-gateway** | Vitest 1.6.1 | Node.js |
-| **frontend** | Vitest 1.6.1 | jsdom |
-| **frontend (E2E)** | Playwright | Chromium/Firefox/WebKit |
+| Package            | Framework    | Environment             |
+| ------------------ | ------------ | ----------------------- |
+| **mcp-gateway**    | Vitest 1.6.1 | Node.js                 |
+| **frontend**       | Vitest 1.6.1 | jsdom                   |
+| **frontend (E2E)** | Playwright   | Chromium/Firefox/WebKit |
 
 ### Test Commands
 
@@ -508,58 +524,58 @@ npm run test:e2e:headed    # Visible browser
 
 ### Backend Test Files (mcp-gateway)
 
-| File | Tests | Description |
-|------|-------|-------------|
-| `api-key.service.test.ts` | 74 | API key validation, creation, caching (SEC-005) |
-| `command-processor.test.ts` | 54 | AI command processing (ARCH-001) |
-| `command-response-builder.test.ts` | 37 | Response construction (ARCH-001) |
-| `file-context-loader.test.ts` | 36 | File context loading for AI (ARCH-001) |
-| `file.service.test.ts` | 73 | File upload, MIME validation, magic bytes (SEC-004) |
-| `health.test.ts` | 18 | Health check endpoints |
-| `input-sanitizer.test.ts` | 47 | Input sanitization, prompt injection (SEC-006) |
-| `security.test.ts` | 57 | Auth middleware, rate limiter, scope checks |
-| `integration.test.ts` | 52 | Full API route integration tests |
+| File                               | Tests | Description                                         |
+| ---------------------------------- | ----- | --------------------------------------------------- |
+| `api-key.service.test.ts`          | 74    | API key validation, creation, caching (SEC-005)     |
+| `command-processor.test.ts`        | 54    | AI command processing (ARCH-001)                    |
+| `command-response-builder.test.ts` | 37    | Response construction (ARCH-001)                    |
+| `file-context-loader.test.ts`      | 36    | File context loading for AI (ARCH-001)              |
+| `file.service.test.ts`             | 73    | File upload, MIME validation, magic bytes (SEC-004) |
+| `health.test.ts`                   | 18    | Health check endpoints                              |
+| `input-sanitizer.test.ts`          | 47    | Input sanitization, prompt injection (SEC-006)      |
+| `security.test.ts`                 | 57    | Auth middleware, rate limiter, scope checks         |
+| `integration.test.ts`              | 52    | Full API route integration tests                    |
 
 **Total Backend: 448 tests** ✅
 
 ### Frontend Unit Test Files
 
-| File | Tests | Description |
-|------|-------|-------------|
-| `src/stores/app-store.test.ts` | 31 | Theme, Sidebar, Toast, CommandPalette stores |
-| `src/stores/chat-store.test.ts` | 54 | Chat store, messages, streaming (PERF-011) |
-| `src/stores/file-store.test.ts` | 58 | File store, selection, uploads |
-| `src/hooks/use-websocket.test.ts` | 37 | WebSocket hooks (PERF-003) |
-| `src/lib/api-client.test.ts` | 53 | API client (localStorage chat, MCP files) |
-| `src/lib/utils.test.ts` | 42 | Utility functions |
-| `src/components/ui/*.test.tsx` | 108 | Button, Badge, Card components |
-| `src/components/layout/*.test.tsx` | 75 | Header, Sidebar components |
+| File                               | Tests | Description                                  |
+| ---------------------------------- | ----- | -------------------------------------------- |
+| `src/stores/app-store.test.ts`     | 31    | Theme, Sidebar, Toast, CommandPalette stores |
+| `src/stores/chat-store.test.ts`    | 54    | Chat store, messages, streaming (PERF-011)   |
+| `src/stores/file-store.test.ts`    | 58    | File store, selection, uploads               |
+| `src/hooks/use-websocket.test.ts`  | 37    | WebSocket hooks (PERF-003)                   |
+| `src/lib/api-client.test.ts`       | 53    | API client (localStorage chat, MCP files)    |
+| `src/lib/utils.test.ts`            | 42    | Utility functions                            |
+| `src/components/ui/*.test.tsx`     | 108   | Button, Badge, Card components               |
+| `src/components/layout/*.test.tsx` | 75    | Header, Sidebar components                   |
 
 **Total Frontend Unit: 458 tests** ✅
 
 ### E2E Test Files (Playwright)
 
-| File | Tests | Description |
-|------|-------|-------------|
-| `e2e/navigation.spec.ts` | 9 | Page routing, mobile navigation |
-| `e2e/chat.spec.ts` | 14 | Chat interface, input, messages |
-| `e2e/files.spec.ts` | 14 | File list, upload, actions |
-| `e2e/dashboard.spec.ts` | 10 | Dashboard, quick actions, responsive |
-| `e2e/theme.spec.ts` | 9 | Theme toggle, persistence, system preference |
-| `e2e/accessibility.spec.ts` | 15 | Keyboard nav, ARIA, color contrast |
+| File                        | Tests | Description                                  |
+| --------------------------- | ----- | -------------------------------------------- |
+| `e2e/navigation.spec.ts`    | 9     | Page routing, mobile navigation              |
+| `e2e/chat.spec.ts`          | 14    | Chat interface, input, messages              |
+| `e2e/files.spec.ts`         | 14    | File list, upload, actions                   |
+| `e2e/dashboard.spec.ts`     | 10    | Dashboard, quick actions, responsive         |
+| `e2e/theme.spec.ts`         | 9     | Theme toggle, persistence, system preference |
+| `e2e/accessibility.spec.ts` | 15    | Keyboard nav, ARIA, color contrast           |
 
 **Total E2E: 64 tests**
 
 ### Test Coverage by Issue
 
-| Issue | Test File | Coverage |
-|-------|-----------|----------|
-| **ARCH-001** | `command-processor.test.ts`, `command-response-builder.test.ts`, `file-context-loader.test.ts` | 110 tests |
-| **SEC-004** | `file.service.test.ts` | Magic byte validation |
-| **SEC-005** | `api-key.service.test.ts` | Timing-safe comparison |
-| **SEC-006** | `input-sanitizer.test.ts` | 47 prompt injection tests |
-| **PERF-003** | `use-websocket.test.ts` | Singleton WebSocket |
-| **PERF-011** | `chat-store.test.ts` | Selector pattern |
+| Issue        | Test File                                                                                      | Coverage                  |
+| ------------ | ---------------------------------------------------------------------------------------------- | ------------------------- |
+| **ARCH-001** | `command-processor.test.ts`, `command-response-builder.test.ts`, `file-context-loader.test.ts` | 110 tests                 |
+| **SEC-004**  | `file.service.test.ts`                                                                         | Magic byte validation     |
+| **SEC-005**  | `api-key.service.test.ts`                                                                      | Timing-safe comparison    |
+| **SEC-006**  | `input-sanitizer.test.ts`                                                                      | 47 prompt injection tests |
+| **PERF-003** | `use-websocket.test.ts`                                                                        | Singleton WebSocket       |
+| **PERF-011** | `chat-store.test.ts`                                                                           | Selector pattern          |
 
 ### Writing New Tests
 
@@ -633,6 +649,7 @@ curl -X POST \
 ## MCP Server Integration
 
 This MCP server provides tools for:
+
 - **Zentoria APIs** - All module endpoints
 - **Proxmox Deployment** - Container management
 - **Database Operations** - Query and manage
@@ -658,35 +675,36 @@ Add to `~/.claude/settings.json`:
 
 ### Security Implementations
 
-| Issue | File | Description |
-|-------|------|-------------|
-| **SEC-001** | `.env.example`, `.env` | Secrets moved to environment variables |
-| **SEC-003** | `src/routes/keys.ts` | Rate limit API key creation (5/hour per user) |
-| **SEC-004** | `src/infrastructure/file-validator.ts` | Magic byte validation for file uploads |
-| **SEC-005** | `src/repositories/api-key.repository.ts` | Timing-safe comparison for API keys |
-| **SEC-006** | `src/infrastructure/input-sanitizer.ts` | Input sanitization + prompt injection detection |
+| Issue       | File                                     | Description                                     |
+| ----------- | ---------------------------------------- | ----------------------------------------------- |
+| **SEC-001** | `.env.example`, `.env`                   | Secrets moved to environment variables          |
+| **SEC-003** | `src/routes/keys.ts`                     | Rate limit API key creation (5/hour per user)   |
+| **SEC-004** | `src/infrastructure/file-validator.ts`   | Magic byte validation for file uploads          |
+| **SEC-005** | `src/repositories/api-key.repository.ts` | Timing-safe comparison for API keys             |
+| **SEC-006** | `src/infrastructure/input-sanitizer.ts`  | Input sanitization + prompt injection detection |
 
 ### Performance Implementations
 
-| Issue | File | Description |
-|-------|------|-------------|
-| **PERF-001** | `src/repositories/session.repository.ts` | Secondary Redis index for user sessions |
-| **PERF-002** | `src/services/command.service.ts` | Batch file fetches with `Promise.all` |
-| **PERF-003** | `frontend/src/hooks/use-websocket.ts` | Singleton WebSocket manager |
-| **PERF-005** | `src/repositories/api-key.repository.ts` | Redis caching for API keys (5-min TTL) |
-| **PERF-008** | `src/repositories/audit.repository.ts` | Fire-and-forget audit logging with batching |
-| **PERF-010** | `prisma/schema.prisma` | Composite index `@@index([userId, createdAt])` |
-| **PERF-011** | `frontend/src/stores/chat-store.ts` | Proper Zustand selector pattern |
+| Issue        | File                                     | Description                                    |
+| ------------ | ---------------------------------------- | ---------------------------------------------- |
+| **PERF-001** | `src/repositories/session.repository.ts` | Secondary Redis index for user sessions        |
+| **PERF-002** | `src/services/command.service.ts`        | Batch file fetches with `Promise.all`          |
+| **PERF-003** | `frontend/src/hooks/use-websocket.ts`    | Singleton WebSocket manager                    |
+| **PERF-005** | `src/repositories/api-key.repository.ts` | Redis caching for API keys (5-min TTL)         |
+| **PERF-008** | `src/repositories/audit.repository.ts`   | Fire-and-forget audit logging with batching    |
+| **PERF-010** | `prisma/schema.prisma`                   | Composite index `@@index([userId, createdAt])` |
+| **PERF-011** | `frontend/src/stores/chat-store.ts`      | Proper Zustand selector pattern                |
 
 ### Code Quality Implementations
 
-| Issue | File | Description |
-|-------|------|-------------|
+| Issue      | File                      | Description                         |
+| ---------- | ------------------------- | ----------------------------------- |
 | **CQ-004** | `src/config/constants.ts` | Centralized configuration constants |
 
 ### Input Sanitizer (SEC-006)
 
 Detects 12+ prompt injection patterns:
+
 - System prompt override attempts
 - Jailbreak techniques (DAN, developer mode)
 - Delimiter injection (code blocks, XML tags)
@@ -720,6 +738,7 @@ if (!result.allowed) {
 ```
 
 **Predefined Configs:**
+
 - `apiKeyCreation`: 5/hour
 - `loginAttempts`: 10/15min
 - `fileUpload`: 50/hour
@@ -755,6 +774,7 @@ const { messages, sendMessage } = useChatUpdates(sessionId);
 ```
 
 **Features:**
+
 - Reference counting for connection lifecycle
 - `useSyncExternalStore` for React 18 support
 - Event listener tracking with reconnection support
@@ -792,11 +812,11 @@ const maxSize = SIZE_LIMITS.MAX_FILE_SIZE_BYTES; // 100MB
 
 The MCP Gateway communicates with AI Orchestrator (Container 444) via the `/api/v1/chat` endpoint.
 
-| Field | Transformation |
-|-------|---------------|
-| `command` | → `message` |
-| `userId` | → `user_id` |
-| `sessionId` | → `session_id` |
+| Field                                             | Transformation     |
+| ------------------------------------------------- | ------------------ |
+| `command`                                         | → `message`        |
+| `userId`                                          | → `user_id`        |
+| `sessionId`                                       | → `session_id`     |
 | `fileContexts`, `systemPrompt`, `variables`, etc. | → `context` object |
 
 ### Key File
@@ -840,11 +860,11 @@ ssh root@100.121.19.12 "pct exec 444 -- curl -s localhost:8000/api/v1/health"
 
 ### GitHub Repository
 
-| Field | Value |
-|-------|-------|
+| Field          | Value                                                   |
+| -------------- | ------------------------------------------------------- |
 | **Repository** | https://github.com/ZentoriaAI/zentoria-personal-edition |
-| **Visibility** | Public |
-| **Branch** | main |
+| **Visibility** | Public                                                  |
+| **Branch**     | main                                                    |
 
 ### Deployment via Git
 
@@ -880,22 +900,22 @@ npm run dev          # Development server
 
 ### Server Directories
 
-| Container | Path | Content |
-|-----------|------|---------|
-| 441 (Backend) | `/opt/zentoria-api-full/` | MCP Gateway (Fastify) |
-| 440 (Frontend) | `/opt/zentoria-frontend/` | Next.js App |
-| Both | `/tmp/repo/` | Git clone of repository |
+| Container      | Path                      | Content                 |
+| -------------- | ------------------------- | ----------------------- |
+| 441 (Backend)  | `/opt/zentoria-api-full/` | MCP Gateway (Fastify)   |
+| 440 (Frontend) | `/opt/zentoria-frontend/` | Next.js App             |
+| Both           | `/tmp/repo/`              | Git clone of repository |
 
 ### Key Build Changes (v1.5)
 
-| File | Change |
-|------|--------|
-| `mcp-gateway/package.json` | Added esbuild, changed build to `node scripts/build.js` |
-| `mcp-gateway/scripts/build.js` | New esbuild transpile-only build script |
-| `mcp-gateway/tsconfig.json` | Relaxed strict mode for compatibility |
-| `frontend/package.json` | Fixed dependency placement (react-query-devtools) |
-| `frontend/tsconfig.json` | Excluded vitest.config.ts, playwright.config.ts, e2e |
-| `frontend/src/hooks/use-websocket.ts` | Fixed EventCallback type with unknown + assertion |
+| File                                  | Change                                                  |
+| ------------------------------------- | ------------------------------------------------------- |
+| `mcp-gateway/package.json`            | Added esbuild, changed build to `node scripts/build.js` |
+| `mcp-gateway/scripts/build.js`        | New esbuild transpile-only build script                 |
+| `mcp-gateway/tsconfig.json`           | Relaxed strict mode for compatibility                   |
+| `frontend/package.json`               | Fixed dependency placement (react-query-devtools)       |
+| `frontend/tsconfig.json`              | Excluded vitest.config.ts, playwright.config.ts, e2e    |
+| `frontend/src/hooks/use-websocket.ts` | Fixed EventCallback type with unknown + assertion       |
 
 ---
 
@@ -905,14 +925,15 @@ npm run dev          # Development server
 
 Located in `/scripts/deploy/`:
 
-| Script | Purpose |
-|--------|---------|
-| `deploy-backend.sh` | Deploy MCP Gateway to Container 441 |
-| `deploy-frontend.sh` | Deploy Next.js to Container 440 |
-| `deploy.sh` | Orchestrated full deployment |
-| `health-check.sh` | Comprehensive 7-container monitoring |
+| Script               | Purpose                              |
+| -------------------- | ------------------------------------ |
+| `deploy-backend.sh`  | Deploy MCP Gateway to Container 441  |
+| `deploy-frontend.sh` | Deploy Next.js to Container 440      |
+| `deploy.sh`          | Orchestrated full deployment         |
+| `health-check.sh`    | Comprehensive 7-container monitoring |
 
 **Features:**
+
 - Zero-downtime deployments with rolling updates
 - Automatic rollback on failure
 - Health checks (30 retries, 10s interval)
@@ -920,10 +941,10 @@ Located in `/scripts/deploy/`:
 
 ### GitHub Actions Workflows
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `ci.yml` | Push/PR to main/develop | Build, test (448+560 tests), lint |
-| `deploy-proxmox.yml` | Version tags (v*.*.*) | Deploy to Proxmox containers |
+| Workflow             | Trigger                 | Purpose                           |
+| -------------------- | ----------------------- | --------------------------------- |
+| `ci.yml`             | Push/PR to main/develop | Build, test (448+560 tests), lint |
+| `deploy-proxmox.yml` | Version tags (v*.*.*)   | Deploy to Proxmox containers      |
 
 ### Feature Flags
 
@@ -944,6 +965,7 @@ const isEnabled = useFeatureFlag('new-chat-ui');
 ```
 
 **API Endpoints:**
+
 - `GET /api/v1/feature-flags` - List all flags
 - `POST /api/v1/feature-flags` - Create flag
 - `PUT /api/v1/feature-flags/:id` - Update flag
@@ -952,13 +974,13 @@ const isEnabled = useFeatureFlag('new-chat-ui');
 
 ### Deployment Documentation
 
-| File | Purpose |
-|------|---------|
-| `DEPLOYMENT-INDEX.md` | Navigation guide |
-| `DEPLOYMENT-QUICK-REFERENCE.md` | Essential commands |
-| `DEPLOYMENT-GUIDE.md` | Step-by-step procedures |
-| `DEPLOYMENT.md` | Technical architecture |
-| `DEPLOYMENT-SUMMARY.md` | Deliverables overview |
+| File                            | Purpose                 |
+| ------------------------------- | ----------------------- |
+| `DEPLOYMENT-INDEX.md`           | Navigation guide        |
+| `DEPLOYMENT-QUICK-REFERENCE.md` | Essential commands      |
+| `DEPLOYMENT-GUIDE.md`           | Step-by-step procedures |
+| `DEPLOYMENT.md`                 | Technical architecture  |
+| `DEPLOYMENT-SUMMARY.md`         | Deliverables overview   |
 
 ### Quick Deploy Commands
 
@@ -982,22 +1004,34 @@ git push origin v1.11.0
 
 ### Live Deployment Status (Verified 2026-01-18)
 
-| Endpoint | Status | Response |
-|----------|--------|----------|
-| `https://ai.zentoria.ai/` | ✅ 200 | Frontend serving |
-| `https://ai.zentoria.ai/api/v1/health` | ✅ 200 | All dependencies healthy |
-| `https://ai.zentoria.ai/ai/health` | ✅ 200 | Ollama, Redis, Qdrant connected |
-| `https://ai.zentoria.ai/api/v1/mcp/command` | ✅ 200 | AI chat working |
+| Endpoint                                    | Status | Response                        |
+| ------------------------------------------- | ------ | ------------------------------- |
+| `https://ai.zentoria.ai/`                   | ✅ 200  | Frontend serving                |
+| `https://ai.zentoria.ai/api/v1/health`      | ✅ 200  | All dependencies healthy        |
+| `https://ai.zentoria.ai/ai/health`          | ✅ 200  | Ollama, Redis, Qdrant connected |
+| `https://ai.zentoria.ai/api/v1/mcp/command` | ✅ 200  | AI chat working                 |
 
 **SSL Certificate:** Valid until March 20, 2026 (Let's Encrypt)
 **SSL Grade:** A+ (SSL Labs)
 
 ---
 
-**Version:** 1.14
+**Version:** 1.15
 **Last Updated:** January 19, 2026
 
 ### Changelog
+
+- v1.15: Phase 3 UX Polish - Files page comprehensive improvements
+- v1.15: Added context-menu.tsx component with right-click support, icons, shortcuts
+- v1.15: Added dropdown-menu.tsx component for sort controls
+- v1.15: Added tooltip.tsx component for button hints and file info
+- v1.15: Added keyboard shortcuts (Ctrl+A, Delete, Escape, Backspace, F5)
+- v1.15: Added sort dropdown with name/date/size/type and direction indicators
+- v1.15: Added file/folder rename dialog with mutation
+- v1.15: Added copy path to clipboard functionality
+- v1.15: Improved empty state with glow effect illustration
+- v1.15: Improved mobile responsiveness with touch-friendly targets
+- v1.15: Added CSS animations (fade, slide, zoom, shimmer, reduced motion support)
 - v1.14: Fixed React infinite loop in chat components using useEnhancedChatStore.getState() pattern
 - v1.14: Fixed AbortController test mocking for jsdom compatibility in chat-api.test.ts
 - v1.14: All 560 frontend tests now passing (was 458)

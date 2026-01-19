@@ -448,3 +448,46 @@ export interface AvailableModel {
   contextWindow: number;
   description?: string;
 }
+
+// ============================
+// Auth Session Types
+// ============================
+
+export interface AuthSession {
+  id: string;
+  userId: string;
+  userAgent: string;
+  ipAddress: string;
+  lastActivity: string;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+// ============================
+// Feature Flag Types
+// ============================
+
+export interface FeatureFlag {
+  name: string;
+  enabled: boolean;
+  rolloutPercentage: number;
+  description?: string;
+  exceptionUsers?: string[];
+  blockedUsers?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FeatureFlagResult {
+  isEnabled: boolean;
+  rolloutPercentage: number;
+  reason: 'disabled' | 'rollout' | 'exception' | 'blocked' | 'not_found';
+}
+
+export interface CreateFeatureFlagRequest {
+  name: string;
+  enabled: boolean;
+  rolloutPercentage?: number;
+  description?: string;
+}

@@ -23,6 +23,8 @@ import {
   Pin,
   Archive,
   Edit3,
+  Menu,
+  Mic,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,8 +34,10 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn, formatRelativeTime, copyToClipboard, getFileType, formatBytes } from '@/lib/utils';
 import { chatApi } from '@/lib/chat-api';
+import { haptics } from '@/lib/haptics';
 import {
   useEnhancedChatStore,
   useStreamingState,
@@ -47,7 +51,49 @@ import { toast } from '@/stores/app-store';
 import { FolderSidebar } from './folder-sidebar';
 import { AgentSelector, AgentBadge } from './agent-selector';
 import { CanvasPanel } from './canvas-panel';
+import { MobileChatHeader, ChatFAB } from './mobile-chat-header';
 import type { EnhancedChatMessage, ChatSession, Agent, Canvas } from '@/types';
+
+// Custom hook for detecting mobile
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  return isMobile;
+}
+
+// Custom hook for keyboard-aware positioning
+function useKeyboardHeight() {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('visualViewport' in window)) return;
+
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      const heightDiff = window.innerHeight - viewport.height;
+      setKeyboardHeight(heightDiff > 100 ? heightDiff : 0);
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    viewport.addEventListener('scroll', handleResize);
+
+    return () => {
+      viewport.removeEventListener('resize', handleResize);
+      viewport.removeEventListener('scroll', handleResize);
+    };
+  }, []);
+
+  return keyboardHeight;
+}
 
 export function EnhancedChat() {
   const queryClient = useQueryClient();
@@ -90,6 +136,12 @@ export function EnhancedChat() {
   const [showSessionMenu, setShowSessionMenu] = useState(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Mobile-specific state
+  const isMobile = useIsMobile();
+  const keyboardHeight = useKeyboardHeight();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(false); // When a session is selected on mobile
 
   // Fetch messages when session changes
   const { isLoading: messagesLoading } = useQuery({
@@ -274,10 +326,32 @@ export function EnhancedChat() {
     }
   };
 
+  // Handle mobile session selection
+  const handleMobileSelectSession = useCallback((id: string) => {
+    setCurrentSession(id);
+    setMobileSidebarOpen(false);
+    setShowMobileChat(true);
+  }, [setCurrentSession]);
+
+  // Handle mobile back navigation
+  const handleMobileBack = useCallback(() => {
+    setShowMobileChat(false);
+  }, []);
+
+  // Handle mobile new chat
+  const handleMobileNewChat = useCallback(() => {
+    haptics.medium();
+    createSessionMutation.mutate();
+    setShowMobileChat(true);
+  }, [createSessionMutation]);
+
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      {/* Folder sidebar */}
-      {!sidebarCollapsed && (
+    <div className={cn(
+      'flex',
+      isMobile ? 'h-[calc(100vh-var(--header-height,3.5rem)-var(--bottom-nav-height,0px))]' : 'h-[calc(100vh-4rem)]'
+    )}>
+      {/* Desktop Folder sidebar */}
+      {!isMobile && !sidebarCollapsed && (
         <Card className="w-64 shrink-0 hidden lg:flex flex-col">
           <FolderSidebar
             onNewSession={() => createSessionMutation.mutate()}
@@ -287,123 +361,184 @@ export function EnhancedChat() {
         </Card>
       )}
 
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="lg:hidden"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            >
-              {sidebarCollapsed ? (
-                <PanelRightOpen className="h-4 w-4" />
-              ) : (
-                <PanelRightClose className="h-4 w-4" />
-              )}
-            </Button>
-
-            {currentSession ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <h2 className="font-semibold truncate">{currentSession.title}</h2>
-                {currentSession.agent && (
-                  <AgentBadge agent={currentSession.agent} size="sm" />
-                )}
-              </div>
-            ) : (
-              <h2 className="font-semibold">New Chat</h2>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <AgentSelector
-              onSelect={(agent) => {
-                if (currentSession) {
-                  updateSessionMutation.mutate({
-                    sessionId: currentSession.id,
-                    updates: { agentId: agent.id },
-                  });
-                }
+      {/* Mobile Sidebar Sheet */}
+      {isMobile && (
+        <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+          <SheetContent side="left" className="w-[85vw] max-w-xs p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Chat sessies</SheetTitle>
+            </SheetHeader>
+            <FolderSidebar
+              onNewSession={() => {
+                createSessionMutation.mutate();
+                setMobileSidebarOpen(false);
+                setShowMobileChat(true);
               }}
-              onOpenSettings={() => setShowSettingsModal(true)}
-              size="sm"
+              onSelectSession={handleMobileSelectSession}
+              onNewFolder={() => {
+                setMobileSidebarOpen(false);
+                setShowNewFolderModal(true);
+              }}
             />
+          </SheetContent>
+        </Sheet>
+      )}
 
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setCanvasPanelOpen(!canvasPanelOpen)}
-            >
-              {canvasPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
-            </Button>
+      {/* Main chat area */}
+      <div className={cn(
+        'flex-1 flex flex-col min-w-0',
+        isMobile && !showMobileChat && 'hidden',
+        isMobile && showMobileChat && 'absolute inset-0 z-20 bg-background'
+      )}>
+        {/* Mobile Header */}
+        {isMobile && (
+          <MobileChatHeader
+            session={currentSession}
+            agent={currentAgent}
+            onBack={handleMobileBack}
+            onNewChat={handleMobileNewChat}
+            onTogglePin={() => {
+              if (currentSession) {
+                updateSessionMutation.mutate({
+                  sessionId: currentSession.id,
+                  updates: { isPinned: !currentSession.isPinned },
+                });
+              }
+            }}
+            onToggleArchive={() => {
+              if (currentSession) {
+                updateSessionMutation.mutate({
+                  sessionId: currentSession.id,
+                  updates: { isArchived: !currentSession.isArchived },
+                });
+              }
+            }}
+            onDelete={() => {
+              if (currentSession) {
+                deleteSessionMutation.mutate(currentSession.id);
+                setShowMobileChat(false);
+              }
+            }}
+          />
+        )}
 
-            {currentSession && (
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setShowSessionMenu(!showSessionMenu)}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-
-                {showSessionMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowSessionMenu(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-light-surface dark:bg-dark-elevated rounded-lg shadow-lg border z-50 py-1">
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-light-hover dark:hover:bg-dark-hover"
-                        onClick={() => {
-                          setShowSessionMenu(false);
-                          updateSessionMutation.mutate({
-                            sessionId: currentSession.id,
-                            updates: { isPinned: !currentSession.isPinned },
-                          });
-                        }}
-                      >
-                        <Pin className="h-4 w-4" />
-                        {currentSession.isPinned ? 'Unpin' : 'Pin'}
-                      </button>
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-light-hover dark:hover:bg-dark-hover"
-                        onClick={() => {
-                          setShowSessionMenu(false);
-                          updateSessionMutation.mutate({
-                            sessionId: currentSession.id,
-                            updates: { isArchived: !currentSession.isArchived },
-                          });
-                        }}
-                      >
-                        <Archive className="h-4 w-4" />
-                        {currentSession.isArchived ? 'Unarchive' : 'Archive'}
-                      </button>
-                      <div className="h-px bg-border my-1" />
-                      <button
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-500/10"
-                        onClick={() => {
-                          setShowSessionMenu(false);
-                          deleteSessionMutation.mutate(currentSession.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </button>
-                    </div>
-                  </>
+        {/* Desktop Header */}
+        {!isMobile && (
+          <div className="flex items-center justify-between px-4 py-2 border-b">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="lg:hidden"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              >
+                {sidebarCollapsed ? (
+                  <PanelRightOpen className="h-4 w-4" />
+                ) : (
+                  <PanelRightClose className="h-4 w-4" />
                 )}
-              </div>
-            )}
+              </Button>
+
+              {currentSession ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="font-semibold truncate">{currentSession.title}</h2>
+                  {currentSession.agent && (
+                    <AgentBadge agent={currentSession.agent} size="sm" />
+                  )}
+                </div>
+              ) : (
+                <h2 className="font-semibold">New Chat</h2>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <AgentSelector
+                onSelect={(agent) => {
+                  if (currentSession) {
+                    updateSessionMutation.mutate({
+                      sessionId: currentSession.id,
+                      updates: { agentId: agent.id },
+                    });
+                  }
+                }}
+                onOpenSettings={() => setShowSettingsModal(true)}
+                size="sm"
+              />
+
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setCanvasPanelOpen(!canvasPanelOpen)}
+              >
+                {canvasPanelOpen ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRightOpen className="h-4 w-4" />
+                )}
+              </Button>
+
+              {currentSession && (
+                <div className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setShowSessionMenu(!showSessionMenu)}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+
+                  {showSessionMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowSessionMenu(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-light-surface dark:bg-dark-elevated rounded-lg shadow-lg border z-50 py-1">
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-light-hover dark:hover:bg-dark-hover"
+                          onClick={() => {
+                            setShowSessionMenu(false);
+                            updateSessionMutation.mutate({
+                              sessionId: currentSession.id,
+                              updates: { isPinned: !currentSession.isPinned },
+                            });
+                          }}
+                        >
+                          <Pin className="h-4 w-4" />
+                          {currentSession.isPinned ? 'Unpin' : 'Pin'}
+                        </button>
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-light-hover dark:hover:bg-dark-hover"
+                          onClick={() => {
+                            setShowSessionMenu(false);
+                            updateSessionMutation.mutate({
+                              sessionId: currentSession.id,
+                              updates: { isArchived: !currentSession.isArchived },
+                            });
+                          }}
+                        >
+                          <Archive className="h-4 w-4" />
+                          {currentSession.isArchived ? 'Unarchive' : 'Archive'}
+                        </button>
+                        <div className="h-px bg-border my-1" />
+                        <button
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-500/10"
+                          onClick={() => {
+                            setShowSessionMenu(false);
+                            deleteSessionMutation.mutate(currentSession.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Messages */}
         <ScrollArea className="flex-1 p-4">
@@ -475,9 +610,15 @@ export function EnhancedChat() {
           </div>
         )}
 
-        {/* Input area */}
-        <div className="p-4 border-t">
-          <div className="flex gap-2 max-w-3xl mx-auto">
+        {/* Input area - keyboard aware on mobile */}
+        <div
+          className={cn(
+            'p-4 border-t bg-background',
+            isMobile && 'pb-safe'
+          )}
+          style={isMobile && keyboardHeight > 0 ? { paddingBottom: `${keyboardHeight}px` } : undefined}
+        >
+          <div className="flex gap-2 max-w-3xl mx-auto items-end">
             <input
               ref={fileInputRef}
               type="file"
@@ -488,7 +629,11 @@ export function EnhancedChat() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => {
+                haptics.light();
+                fileInputRef.current?.click();
+              }}
+              className="shrink-0"
             >
               <Paperclip className="h-5 w-5" />
             </Button>
@@ -497,14 +642,23 @@ export function EnhancedChat() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message..."
-              className="flex-1 min-h-[44px] max-h-32 px-4 py-2 rounded-lg border bg-light-surface dark:bg-dark-elevated resize-none focus:outline-none focus:ring-2 focus:ring-zentoria-500"
+              placeholder={isMobile ? "Bericht..." : "Type your message..."}
+              className={cn(
+                'flex-1 min-h-[44px] max-h-32 px-4 py-2 rounded-lg border',
+                'bg-light-surface dark:bg-dark-elevated resize-none',
+                'focus:outline-none focus:ring-2 focus:ring-zentoria-500',
+                'touch-manipulation'
+              )}
               disabled={isStreaming}
               rows={1}
             />
             <Button
-              onClick={handleSend}
+              onClick={() => {
+                haptics.medium();
+                handleSend();
+              }}
               disabled={!inputValue.trim() || isStreaming}
+              className="shrink-0"
             >
               {isStreaming ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -516,8 +670,44 @@ export function EnhancedChat() {
         </div>
       </div>
 
-      {/* Canvas panel */}
-      <CanvasPanel />
+      {/* Mobile session list view (shown when not in chat) */}
+      {isMobile && !showMobileChat && (
+        <div className="flex-1 flex flex-col bg-background">
+          {/* Mobile header for session list */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-md border-b px-4 py-3 pt-safe">
+            <div className="flex items-center justify-between">
+              <h1 className="text-lg font-semibold">Chat</h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  haptics.light();
+                  setMobileSidebarOpen(true);
+                }}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Session list content */}
+          <ScrollArea className="flex-1">
+            <div className="p-4">
+              <FolderSidebar
+                onNewSession={handleMobileNewChat}
+                onSelectSession={handleMobileSelectSession}
+                onNewFolder={() => setShowNewFolderModal(true)}
+              />
+            </div>
+          </ScrollArea>
+
+          {/* Floating Action Button */}
+          <ChatFAB onClick={handleMobileNewChat} />
+        </div>
+      )}
+
+      {/* Canvas panel - desktop only for now */}
+      {!isMobile && <CanvasPanel />}
     </div>
   );
 }

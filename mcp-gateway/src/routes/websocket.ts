@@ -40,6 +40,15 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify: FastifyInstan
 
     // Handle incoming messages
     ws.on('message', async (rawData: Buffer) => {
+      // Validate message size
+      if (!validateMessageSize(rawData)) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: 'Message too large. Maximum size is 1MB.',
+        }));
+        return;
+      }
+
       try {
         const message = JSON.parse(rawData.toString());
 
@@ -138,6 +147,15 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify: FastifyInstan
     let authenticated = false;
 
     ws.on('message', async (rawData: Buffer) => {
+      // Validate message size
+      if (!validateMessageSize(rawData)) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: 'Message too large. Maximum size is 1MB.',
+        }));
+        return;
+      }
+
       try {
         const message = JSON.parse(rawData.toString());
 
@@ -162,7 +180,7 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify: FastifyInstan
           } else {
             ws.send(JSON.stringify({
               type: 'auth_error',
-              error: 'Invalid token',
+              error: 'Invalid token or insufficient permissions. Requires ai.chat scope.',
             }));
             ws.close(1008, 'Authentication failed');
           }
@@ -197,29 +215,65 @@ export const websocketRoutes: FastifyPluginAsync = async (fastify: FastifyInstan
   });
 };
 
+/** Required scope for WebSocket command streaming */
+const REQUIRED_SCOPE = 'ai.chat';
+
+/** Maximum message size in bytes (1MB) */
+const MAX_MESSAGE_SIZE = 1024 * 1024;
+
+interface AuthResult {
+  userId: string;
+  scopes: string[];
+}
+
 /**
- * Authenticate WebSocket connection
+ * Authenticate WebSocket connection and validate scopes
  */
 async function handleAuth(
   fastify: FastifyInstance,
   token: string
-): Promise<{ userId: string } | null> {
+): Promise<AuthResult | null> {
   try {
     // Try API key first
     if (token.startsWith('znt_')) {
       const apiKeyService = fastify.container.resolve('apiKeyService');
       const keyData = await apiKeyService.validateKey(token);
       if (keyData) {
-        return { userId: keyData.userId };
+        // Check for required scope
+        const scopes = keyData.scopes || [];
+        if (!scopes.includes('admin') && !scopes.includes(REQUIRED_SCOPE)) {
+          logger.warn({ userId: keyData.userId, scopes }, 'WebSocket connection denied: insufficient scopes');
+          return null;
+        }
+        return { userId: keyData.userId, scopes };
       }
     }
 
     // Try JWT
-    const decoded = await fastify.jwt.verify<{ sub: string }>(token);
-    return { userId: decoded.sub };
+    const decoded = await fastify.jwt.verify<{ sub: string; scopes?: string[] }>(token);
+    const scopes = decoded.scopes || ['ai.chat', 'files.read', 'files.write'];
+
+    // Check for required scope
+    if (!scopes.includes('admin') && !scopes.includes(REQUIRED_SCOPE)) {
+      logger.warn({ userId: decoded.sub, scopes }, 'WebSocket connection denied: insufficient scopes');
+      return null;
+    }
+
+    return { userId: decoded.sub, scopes };
   } catch {
     return null;
   }
+}
+
+/**
+ * Validate message size to prevent OOM attacks
+ */
+function validateMessageSize(rawData: Buffer): boolean {
+  if (rawData.length > MAX_MESSAGE_SIZE) {
+    logger.warn({ size: rawData.length, maxSize: MAX_MESSAGE_SIZE }, 'WebSocket message too large');
+    return false;
+  }
+  return true;
 }
 
 /**
