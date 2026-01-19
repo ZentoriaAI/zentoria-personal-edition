@@ -73,6 +73,30 @@ class ApiClient {
   }
 
   // ============================
+  // Generic HTTP Methods
+  // ============================
+
+  async get<T>(url: string, config?: AxiosRequestConfig): Promise<{ data: T }> {
+    const response = await this.client.get<ApiResponse<T>>(url, config);
+    return { data: response.data.data as T };
+  }
+
+  async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<{ data: T }> {
+    const response = await this.client.post<ApiResponse<T>>(url, data, config);
+    return { data: response.data.data as T };
+  }
+
+  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<{ data: T }> {
+    const response = await this.client.put<ApiResponse<T>>(url, data, config);
+    return { data: response.data.data as T };
+  }
+
+  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<{ data: T }> {
+    const response = await this.client.delete<ApiResponse<T>>(url, config);
+    return { data: response.data.data as T };
+  }
+
+  // ============================
   // Health Endpoints
   // ============================
 
