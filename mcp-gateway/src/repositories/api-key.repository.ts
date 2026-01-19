@@ -97,6 +97,15 @@ export class ApiKeyRepository {
     });
   }
 
+  async findByEmail(email: string): Promise<ApiKeyRecord | null> {
+    const result = await this.prisma.apiKey.findFirst({
+      where: { userEmail: email },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return result ? this.mapToRecord(result) : null;
+  }
+
   private mapToRecord(data: {
     id: string;
     userId: string;
