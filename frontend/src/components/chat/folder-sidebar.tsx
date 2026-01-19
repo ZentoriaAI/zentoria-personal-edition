@@ -50,7 +50,6 @@ export function FolderSidebar({
   const filteredSessions = useEnhancedChatStore(selectFilteredSessions);
   const currentSession = useEnhancedChatStore(selectCurrentSession);
   const {
-    setFolders,
     toggleFolderExpanded,
     setSelectedFolder,
     setSearchQuery,
@@ -67,11 +66,12 @@ export function FolderSidebar({
   });
 
   // Sync folders to store when data changes
+  // Note: Use getState() to avoid dependency on setter which can cause infinite loops
   useEffect(() => {
     if (folderData?.folders) {
-      setFolders(folderData.folders);
+      useEnhancedChatStore.getState().setFolders(folderData.folders);
     }
-  }, [folderData, setFolders]);
+  }, [folderData]);
 
   // Fetch sessions
   const { data: sessionsData } = useQuery({

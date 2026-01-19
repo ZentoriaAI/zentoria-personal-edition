@@ -50,14 +50,15 @@ export function AgentSelector({
   const [isOpen, setIsOpen] = useState(false);
   const agents = useEnhancedChatStore(selectAgents);
   const currentAgent = useEnhancedChatStore(selectCurrentAgent);
-  const { setAgents, setSelectedAgent } = useEnhancedChatStore();
+  const setSelectedAgent = useEnhancedChatStore((state) => state.setSelectedAgent);
 
   // Fetch agents
   useQuery({
     queryKey: ['agents'],
     queryFn: async () => {
       const data = await chatApi.getAgents();
-      setAgents(data.agents);
+      // Use getState() to avoid creating dependency on setter
+      useEnhancedChatStore.getState().setAgents(data.agents);
       return data.agents;
     },
   });
