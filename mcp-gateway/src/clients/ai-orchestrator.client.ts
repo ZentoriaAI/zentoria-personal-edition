@@ -196,6 +196,145 @@ export class AiOrchestratorClient {
   }
 
   /**
+   * Stream chat for the chat service interface
+   * Used by ChatService.streamMessage()
+   */
+  async *streamChat(params: {
+    message: string;
+    sessionId: string;
+    userId: string;
+    systemPrompt?: string;
+    model: string;
+    temperature: number;
+  }): AsyncGenerator<{
+    type: 'content' | 'done' | 'error' | 'tool_call' | 'canvas' | 'usage';
+    content?: string;
+    usage?: { promptTokens: number; completionTokens: number };
+    toolCall?: { id: string; name: string; arguments: Record<string, unknown> };
+    canvas?: { id: string; title: string; language: string; content: string };
+  }> {
+    const chatPayload = {
+      message: params.message,
+      session_id: params.sessionId,
+      user_id: params.userId,
+      stream: true,
+      use_rag: false,
+      agent: 'chat',
+      context: {
+        system_prompt: params.systemPrompt,
+        model: params.model,
+        temperature: params.temperature,
+      },
+    };
+
+    const response = await fetch(`${this.baseUrl}/api/v1/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Service-Auth': process.env.SERVICE_AUTH_TOKEN || '',
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify(chatPayload),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error({ status: response.status, error }, 'AI Orchestrator stream error');
+      yield { type: 'error', content: error };
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      yield { type: 'error', content: 'No response body' };
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE format
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              // Yield final usage before done
+              if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+                yield {
+                  type: 'usage',
+                  usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens }
+                };
+              }
+              yield { type: 'done' };
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // Handle content chunks
+              if (parsed.content) {
+                yield { type: 'content', content: parsed.content };
+              }
+
+              // Handle tool calls
+              if (parsed.tool_call) {
+                yield {
+                  type: 'tool_call',
+                  toolCall: {
+                    id: parsed.tool_call.id,
+                    name: parsed.tool_call.name,
+                    arguments: parsed.tool_call.arguments,
+                  }
+                };
+              }
+
+              // Handle canvas (code blocks)
+              if (parsed.canvas) {
+                yield {
+                  type: 'canvas',
+                  canvas: parsed.canvas,
+                };
+              }
+
+              // Accumulate usage
+              if (parsed.usage) {
+                totalPromptTokens = parsed.usage.prompt_tokens || parsed.usage.promptTokens || totalPromptTokens;
+                totalCompletionTokens = parsed.usage.completion_tokens || parsed.usage.completionTokens || totalCompletionTokens;
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+
+      // Stream ended without [DONE], still yield done
+      if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+        yield {
+          type: 'usage',
+          usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens }
+        };
+      }
+      yield { type: 'done' };
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
    * Get available models
    */
   async getModels(): Promise<string[]> {
