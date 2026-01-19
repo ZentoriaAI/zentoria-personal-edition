@@ -4,8 +4,8 @@
  * Provides React hook for checking feature flag status
  */
 
+import React, { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback } from 'react';
 import { apiClient } from '@/lib/api-client';
 
 export interface FeatureFlagResult {
