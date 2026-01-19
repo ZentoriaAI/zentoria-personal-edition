@@ -254,6 +254,18 @@ export class AiOrchestratorClient {
     let buffer = '';
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
+    let currentEvent = '';
+
+    // Helper to convert Python-style dict strings to valid JSON
+    const pythonToJson = (str: string): string => {
+      // Replace single quotes with double quotes for keys and string values
+      // Handle: {'key': 'value'} -> {"key": "value"}
+      return str
+        .replace(/'/g, '"')
+        .replace(/None/g, 'null')
+        .replace(/True/g, 'true')
+        .replace(/False/g, 'false');
+    };
 
     try {
       while (true) {
@@ -262,15 +274,34 @@ export class AiOrchestratorClient {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Parse SSE format
+        // Parse SSE format - handles both "event: xxx" and "data: xxx" lines
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+          const trimmed = line.trim();
+
+          // Track the current event type
+          if (trimmed.startsWith('event:')) {
+            currentEvent = trimmed.slice(6).trim();
+
+            // Handle done event
+            if (currentEvent === 'done') {
+              if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+                yield {
+                  type: 'usage',
+                  usage: { promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens }
+                };
+              }
+              yield { type: 'done' };
+              return;
+            }
+            continue;
+          }
+
+          if (trimmed.startsWith('data:')) {
+            const data = trimmed.slice(5).trim();
             if (data === '[DONE]') {
-              // Yield final usage before done
               if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
                 yield {
                   type: 'usage',
@@ -282,7 +313,13 @@ export class AiOrchestratorClient {
             }
 
             try {
-              const parsed = JSON.parse(data);
+              // Try to parse as JSON first, fall back to Python-style conversion
+              let parsed;
+              try {
+                parsed = JSON.parse(data);
+              } catch {
+                parsed = JSON.parse(pythonToJson(data));
+              }
 
               // Handle content chunks
               if (parsed.content) {
@@ -315,13 +352,14 @@ export class AiOrchestratorClient {
                 totalCompletionTokens = parsed.usage.completion_tokens || parsed.usage.completionTokens || totalCompletionTokens;
               }
             } catch {
-              // Skip invalid JSON
+              // Skip invalid data
+              this.logger.debug({ data }, 'Skipping unparseable SSE data');
             }
           }
         }
       }
 
-      // Stream ended without [DONE], still yield done
+      // Stream ended without done event, still yield done
       if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
         yield {
           type: 'usage',
