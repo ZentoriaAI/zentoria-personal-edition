@@ -4,7 +4,7 @@
  * Tests for the Enhanced Chat API client - sessions, messages, folders, settings, agents.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { ChatApiClient } from './chat-api';
 
 // Mock types
@@ -116,6 +116,38 @@ const createMockSettings = (overrides: Partial<MockSettings> = {}): MockSettings
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Mock AbortController for jsdom compatibility
+class MockAbortController {
+  signal: AbortSignal;
+  abort: () => void;
+
+  constructor() {
+    const abortEvent = new Event('abort');
+    let aborted = false;
+
+    this.signal = {
+      aborted: false,
+      reason: undefined,
+      onabort: null,
+      throwIfAborted: () => {
+        if (aborted) throw new DOMException('Aborted', 'AbortError');
+      },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as AbortSignal;
+
+    this.abort = () => {
+      aborted = true;
+      (this.signal as { aborted: boolean }).aborted = true;
+    };
+  }
+}
+
+// Store original and replace with mock
+const OriginalAbortController = global.AbortController;
+global.AbortController = MockAbortController as unknown as typeof AbortController;
+
 describe('ChatApiClient', () => {
   let client: ChatApiClient;
 
@@ -126,6 +158,11 @@ describe('ChatApiClient', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterAll(() => {
+    // Restore original AbortController
+    global.AbortController = OriginalAbortController;
   });
 
   // ============================
