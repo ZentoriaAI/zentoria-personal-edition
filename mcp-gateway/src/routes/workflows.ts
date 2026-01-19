@@ -11,10 +11,127 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
   const workflowService = fastify.container.resolve('workflowService');
 
   /**
-   * POST /api/v1/mcp/workflow
-   * Trigger a workflow
+   * GET /api/v1/workflows
+   * List all workflows
    */
-  fastify.post('/workflow', {
+  fastify.get('/', {
+    preHandler: requireScope('workflows.read'),
+    schema: {
+      tags: ['Workflows'],
+      summary: 'List all workflows',
+      description: 'Returns a list of all available workflows',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  description: { type: 'string' },
+                  active: { type: 'boolean' },
+                  createdAt: { type: 'string' },
+                  updatedAt: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // Return mock workflows since n8n is not yet deployed
+    // This will be replaced with actual n8n API calls when n8n is set up
+    const mockWorkflows = [
+      {
+        id: 'wf_1',
+        name: 'Daily Backup',
+        description: 'Automated daily backup workflow',
+        active: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'wf_2',
+        name: 'File Sync',
+        description: 'Sync files to cloud storage',
+        active: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    return reply.send({ data: mockWorkflows });
+  });
+
+  /**
+   * GET /api/v1/workflows/executions
+   * List workflow executions
+   */
+  fastify.get('/executions', {
+    preHandler: requireScope('workflows.read'),
+    schema: {
+      tags: ['Workflows'],
+      summary: 'List workflow executions',
+      description: 'Returns a list of workflow executions',
+      querystring: {
+        type: 'object',
+        properties: {
+          workflowId: { type: 'string' },
+          page: { type: 'integer', default: 1 },
+          pageSize: { type: 'integer', default: 20 },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                items: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      workflowId: { type: 'string' },
+                      status: { type: 'string' },
+                      startedAt: { type: 'string' },
+                      finishedAt: { type: 'string' },
+                    },
+                  },
+                },
+                total: { type: 'integer' },
+                page: { type: 'integer' },
+                pageSize: { type: 'integer' },
+                totalPages: { type: 'integer' },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // Return empty executions since n8n is not yet deployed
+    return reply.send({
+      data: {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        totalPages: 0,
+      },
+    });
+  });
+
+  /**
+   * POST /api/v1/workflows/trigger
+   * Trigger a workflow (renamed from /workflow)
+   */
+  fastify.post('/trigger', {
     preHandler: requireScope('workflows.trigger'),
     schema: {
       tags: ['Workflows'],
@@ -70,10 +187,10 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
   });
 
   /**
-   * GET /api/v1/mcp/workflow/:executionId
+   * GET /api/v1/workflows/:executionId
    * Get workflow execution status
    */
-  fastify.get('/workflow/:executionId', {
+  fastify.get('/:executionId', {
     preHandler: requireScope('workflows.read'),
     schema: {
       tags: ['Workflows'],
@@ -112,11 +229,11 @@ export const workflowRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
   });
 
   /**
-   * POST /api/v1/mcp/workflow/callback
+   * POST /api/v1/workflows/callback
    * Webhook callback from n8n for workflow completion
    * (Called by n8n, uses a shared secret for auth)
    */
-  fastify.post('/workflow/callback', {
+  fastify.post('/callback', {
     schema: {
       tags: ['Workflows'],
       summary: 'Workflow completion callback',

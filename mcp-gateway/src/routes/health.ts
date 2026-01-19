@@ -91,6 +91,98 @@ export const healthRoutes: FastifyPluginAsync = async (fastify: FastifyInstance)
   });
 
   /**
+   * GET /api/v1/health/metrics
+   * System metrics for dashboard
+   */
+  fastify.get('/health/metrics', {
+    schema: {
+      tags: ['Health'],
+      summary: 'System metrics',
+      description: 'Returns system metrics for dashboard display',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            data: {
+              type: 'object',
+              properties: {
+                cpu: {
+                  type: 'object',
+                  properties: {
+                    usage: { type: 'number' },
+                    cores: { type: 'integer' },
+                  },
+                },
+                memory: {
+                  type: 'object',
+                  properties: {
+                    used: { type: 'integer' },
+                    total: { type: 'integer' },
+                    percentage: { type: 'number' },
+                  },
+                },
+                disk: {
+                  type: 'object',
+                  properties: {
+                    used: { type: 'integer' },
+                    total: { type: 'integer' },
+                    percentage: { type: 'number' },
+                  },
+                },
+                network: {
+                  type: 'object',
+                  properties: {
+                    bytesIn: { type: 'integer' },
+                    bytesOut: { type: 'integer' },
+                  },
+                },
+                requests: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'integer' },
+                    perMinute: { type: 'number' },
+                  },
+                },
+                uptime: { type: 'integer' },
+                timestamp: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // Return mock metrics - in production this would gather real system stats
+    const metrics = {
+      cpu: {
+        usage: Math.random() * 30 + 10, // 10-40%
+        cores: 4,
+      },
+      memory: {
+        used: Math.floor(Math.random() * 4000000000) + 2000000000, // 2-6 GB
+        total: 8000000000, // 8 GB
+        percentage: Math.random() * 40 + 30, // 30-70%
+      },
+      disk: {
+        used: Math.floor(Math.random() * 100000000000) + 50000000000, // 50-150 GB
+        total: 500000000000, // 500 GB
+        percentage: Math.random() * 20 + 10, // 10-30%
+      },
+      network: {
+        bytesIn: Math.floor(Math.random() * 1000000000),
+        bytesOut: Math.floor(Math.random() * 500000000),
+      },
+      requests: {
+        total: Math.floor(Math.random() * 10000) + 1000,
+        perMinute: Math.random() * 50 + 10,
+      },
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+    return reply.send({ data: metrics });
+  });
+
+  /**
    * GET /api/v1/health/live
    * Kubernetes liveness probe (simple)
    */

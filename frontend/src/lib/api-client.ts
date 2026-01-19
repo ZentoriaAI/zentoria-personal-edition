@@ -531,6 +531,32 @@ class ApiClient {
     await this.client.delete(`/keys/${id}`);
   }
 
+  /**
+   * Request a new API key via email (public endpoint - no auth required)
+   */
+  async forgotApiKey(email: string): Promise<{ success: boolean; message: string }> {
+    const baseUrl = API_URL || '';
+    const response = await fetch(`${baseUrl}/api/v1/mcp/forgot-key`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (response.status === 429) {
+      const data = await response.json();
+      throw new Error(data.error?.message || 'Too many requests. Please try again later.');
+    }
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error?.message || data.message || 'Failed to request new API key');
+    }
+
+    return response.json();
+  }
+
   async getApiKeyUsage(id: string): Promise<{ date: string; count: number }[]> {
     const { data } = await this.client.get<ApiResponse<{ date: string; count: number }[]>>(
       `/keys/${id}/usage`

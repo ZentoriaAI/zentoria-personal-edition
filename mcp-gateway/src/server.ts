@@ -29,6 +29,7 @@ import { authRoutes } from './routes/auth.js'; // SEC-010
 import { chatRoutes } from './routes/chat.js';
 import { folderRoutes } from './routes/folders.js';
 import { settingsRoutes } from './routes/settings.js';
+import { logsRoutes } from './routes/logs.js';
 
 export async function createServer(container: AwilixContainer): Promise<FastifyInstance> {
   const server = Fastify({
@@ -178,7 +179,8 @@ async function registerRoutes(server: FastifyInstance): Promise<void> {
   await server.register(mcpRoutes, { prefix: '/api/v1/mcp' });
   await server.register(fileRoutes, { prefix: '/api/v1/mcp' });
   await server.register(keyRoutes, { prefix: '/api/v1' });
-  await server.register(workflowRoutes, { prefix: '/api/v1' });
+  await server.register(workflowRoutes, { prefix: '/api/v1/workflows' });
+  await server.register(logsRoutes, { prefix: '/api/v1/logs' });
 
   // WebSocket routes
   await server.register(websocketRoutes, { prefix: '/ws' });
