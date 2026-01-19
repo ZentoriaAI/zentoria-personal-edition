@@ -17,6 +17,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
     "openapi:validate": "redocly lint openapi.yaml",
     "openapi:bundle": "redocly bundle openapi.yaml -o dist/openapi.json"
   },
@@ -71,5 +74,8 @@
     "node": ">=20.0.0"
   },
   "author": "Zentoria",
-  "license": "MIT"
+  "license": "MIT",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }

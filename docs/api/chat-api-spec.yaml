@@ -1,0 +1,1819 @@
+openapi: 3.1.0
+info:
+  title: Zentoria Enhanced Chat API
+  version: 1.0.0
+  description: |
+    Backend API for the Enhanced Chat Interface in Zentoria Personal Edition.
+
+    ## Authentication
+    All endpoints require authentication via:
+    - API Key header: `X-API-Key: znt_test_sk_...`
+    - Bearer token: `Authorization: Bearer <jwt>`
+
+    ## Scopes
+    Different endpoints require different scopes:
+    - `ai.chat` - Chat operations (sessions, messages)
+    - `files.read` - Read file attachments
+    - `files.write` - Upload file attachments
+    - `settings.read` - Read user settings
+    - `settings.write` - Modify user settings
+    - `admin` - Full access (grants all scopes)
+
+servers:
+  - url: https://ai.zentoria.ai/api/v1
+    description: Production
+  - url: http://localhost:4000/api/v1
+    description: Development
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: Sessions
+    description: Chat session management
+  - name: Messages
+    description: Chat message operations
+  - name: Folders
+    description: Project folder organization
+  - name: Agents
+    description: AI agent configuration
+  - name: Settings
+    description: User preferences and settings
+  - name: Attachments
+    description: File attachments for messages
+  - name: Canvas
+    description: Canvas/artifact streaming
+
+paths:
+  # ===========================================================================
+  # CHAT SESSIONS
+  # ===========================================================================
+  /chat/sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: List chat sessions
+      description: |
+        Returns paginated list of chat sessions for the authenticated user.
+        Supports filtering by folder, search query, and date range.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: folderId
+          in: query
+          schema:
+            type: string
+          description: Filter by folder ID (use `null` for unfiled)
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+          description: Search in session titles
+        - name: agentId
+          in: query
+          schema:
+            type: string
+          description: Filter by agent ID
+        - name: createdAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: createdBefore
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, title]
+            default: updatedAt
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated list of sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Create a new chat session
+      description: Creates a new chat session with optional initial message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}:
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Get session details
+      description: Returns session metadata and recent messages.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - name: includeMessages
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Include recent messages in response
+        - name: messageLimit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Session details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionWithMessages'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    patch:
+      tags: [Sessions]
+      operationId: updateSession
+      summary: Update session
+      description: Update session title, folder, or agent.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSessionRequest'
+      responses:
+        '200':
+          description: Session updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    delete:
+      tags: [Sessions]
+      operationId: deleteSession
+      summary: Delete session
+      description: Permanently deletes a session and all its messages.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      responses:
+        '204':
+          description: Session deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/archive:
+    post:
+      tags: [Sessions]
+      operationId: archiveSession
+      summary: Archive session
+      description: Archives a session (soft delete, can be restored).
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      responses:
+        '200':
+          description: Session archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/restore:
+    post:
+      tags: [Sessions]
+      operationId: restoreSession
+      summary: Restore archived session
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      responses:
+        '200':
+          description: Session restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/duplicate:
+    post:
+      tags: [Sessions]
+      operationId: duplicateSession
+      summary: Duplicate session
+      description: Creates a copy of the session with all messages.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: Title for the duplicate (defaults to original + " (Copy)")
+      responses:
+        '201':
+          description: Session duplicated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # MESSAGES
+  # ===========================================================================
+  /chat/sessions/{sessionId}/messages:
+    get:
+      tags: [Messages]
+      operationId: listMessages
+      summary: List session messages
+      description: Returns paginated messages for a session with cursor-based pagination.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Cursor for pagination (message ID)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [before, after]
+            default: before
+          description: Load messages before or after cursor
+      responses:
+        '200':
+          description: Paginated messages
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    post:
+      tags: [Messages]
+      operationId: sendMessage
+      summary: Send a message
+      description: |
+        Sends a user message and triggers AI response.
+
+        For streaming responses, set `stream: true` and connect to WebSocket
+        at `/ws/chat/{sessionId}` to receive chunks.
+
+        For synchronous responses, set `stream: false` (default).
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Message sent and response received (sync mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePair'
+        '202':
+          description: Message accepted for streaming (async mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamingMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/messages/{messageId}:
+    get:
+      tags: [Messages]
+      operationId: getMessage
+      summary: Get message details
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - $ref: '#/components/parameters/MessageIdParam'
+      responses:
+        '200':
+          description: Message details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    patch:
+      tags: [Messages]
+      operationId: editMessage
+      summary: Edit a message
+      description: |
+        Edit a user message. This creates a new branch in the conversation.
+        The original message is preserved and a new version is created.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - $ref: '#/components/parameters/MessageIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditMessageRequest'
+      responses:
+        '200':
+          description: Message edited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageEditResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    delete:
+      tags: [Messages]
+      operationId: deleteMessage
+      summary: Delete a message
+      description: Soft deletes a message. The message content is cleared but metadata preserved.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - $ref: '#/components/parameters/MessageIdParam'
+      responses:
+        '204':
+          description: Message deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/messages/{messageId}/regenerate:
+    post:
+      tags: [Messages]
+      operationId: regenerateMessage
+      summary: Regenerate AI response
+      description: |
+        Regenerates the AI response for a message. Only works on assistant messages.
+        Creates a new version, preserving the original.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - $ref: '#/components/parameters/MessageIdParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stream:
+                  type: boolean
+                  default: true
+                model:
+                  type: string
+                  description: Override model for regeneration
+      responses:
+        '200':
+          description: Regenerated message (sync mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '202':
+          description: Regeneration started (streaming mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StreamingMessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/sessions/{sessionId}/messages/{messageId}/feedback:
+    post:
+      tags: [Messages]
+      operationId: submitFeedback
+      summary: Submit message feedback
+      description: Submit thumbs up/down feedback for an AI message.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdParam'
+        - $ref: '#/components/parameters/MessageIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageFeedback'
+      responses:
+        '200':
+          description: Feedback submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # FOLDERS
+  # ===========================================================================
+  /chat/folders:
+    get:
+      tags: [Folders]
+      operationId: listFolders
+      summary: List project folders
+      description: Returns all folders for the user in a tree structure.
+      parameters:
+        - name: flat
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Return flat list instead of tree
+      responses:
+        '200':
+          description: Folder list/tree
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FolderListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    post:
+      tags: [Folders]
+      operationId: createFolder
+      summary: Create a folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderRequest'
+      responses:
+        '201':
+          description: Folder created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/folders/{folderId}:
+    get:
+      tags: [Folders]
+      operationId: getFolder
+      summary: Get folder details
+      parameters:
+        - $ref: '#/components/parameters/FolderIdParam'
+      responses:
+        '200':
+          description: Folder details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FolderWithSessions'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    patch:
+      tags: [Folders]
+      operationId: updateFolder
+      summary: Update folder
+      parameters:
+        - $ref: '#/components/parameters/FolderIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFolderRequest'
+      responses:
+        '200':
+          description: Folder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    delete:
+      tags: [Folders]
+      operationId: deleteFolder
+      summary: Delete folder
+      description: |
+        Deletes a folder. Sessions in the folder are moved to unfiled.
+        Use `deleteContents=true` to also delete all sessions.
+      parameters:
+        - $ref: '#/components/parameters/FolderIdParam'
+        - name: deleteContents
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Folder deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/folders/{folderId}/move:
+    post:
+      tags: [Folders]
+      operationId: moveFolder
+      summary: Move folder
+      description: Move folder to a new parent (or to root with parentId=null).
+      parameters:
+        - $ref: '#/components/parameters/FolderIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId:
+                  type: string
+                  nullable: true
+                  description: New parent folder ID (null for root)
+                position:
+                  type: integer
+                  description: Position among siblings
+      responses:
+        '200':
+          description: Folder moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Folder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # AGENTS
+  # ===========================================================================
+  /chat/agents:
+    get:
+      tags: [Agents]
+      operationId: listAgents
+      summary: List available agents
+      description: Returns all available AI agents with their capabilities.
+      responses:
+        '200':
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/agents/{agentId}:
+    get:
+      tags: [Agents]
+      operationId: getAgent
+      summary: Get agent details
+      parameters:
+        - $ref: '#/components/parameters/AgentIdParam'
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # USER SETTINGS
+  # ===========================================================================
+  /chat/settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      summary: Get user chat settings
+      responses:
+        '200':
+          description: User settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    patch:
+      tags: [Settings]
+      operationId: updateSettings
+      summary: Update user chat settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSettingsRequest'
+      responses:
+        '200':
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # ATTACHMENTS
+  # ===========================================================================
+  /chat/attachments:
+    post:
+      tags: [Attachments]
+      operationId: uploadAttachment
+      summary: Upload file attachment
+      description: |
+        Upload a file to attach to a message. Returns an attachment ID
+        to include in the message payload.
+
+        Supports: images (jpg, png, gif, webp), documents (pdf, txt, md),
+        code files, and data files (json, csv).
+
+        Max size: 25MB per file.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                purpose:
+                  type: string
+                  enum: [chat-input, code-context, document-reference]
+                  default: chat-input
+      responses:
+        '201':
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: Unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/attachments/{attachmentId}:
+    get:
+      tags: [Attachments]
+      operationId: getAttachment
+      summary: Get attachment metadata
+      parameters:
+        - $ref: '#/components/parameters/AttachmentIdParam'
+      responses:
+        '200':
+          description: Attachment metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    delete:
+      tags: [Attachments]
+      operationId: deleteAttachment
+      summary: Delete attachment
+      parameters:
+        - $ref: '#/components/parameters/AttachmentIdParam'
+      responses:
+        '204':
+          description: Attachment deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/attachments/{attachmentId}/download:
+    get:
+      tags: [Attachments]
+      operationId: downloadAttachment
+      summary: Get attachment download URL
+      parameters:
+        - $ref: '#/components/parameters/AttachmentIdParam'
+      responses:
+        '200':
+          description: Presigned download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expiresAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/attachments/{attachmentId}/preview:
+    get:
+      tags: [Attachments]
+      operationId: getAttachmentPreview
+      summary: Get attachment preview
+      description: Returns a thumbnail or preview for image/document attachments.
+      parameters:
+        - $ref: '#/components/parameters/AttachmentIdParam'
+        - name: size
+          in: query
+          schema:
+            type: string
+            enum: [thumbnail, small, medium, large]
+            default: thumbnail
+      responses:
+        '200':
+          description: Preview image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  # ===========================================================================
+  # CANVAS / ARTIFACTS
+  # ===========================================================================
+  /chat/canvas/{canvasId}:
+    get:
+      tags: [Canvas]
+      operationId: getCanvas
+      summary: Get canvas artifact
+      description: Returns a canvas artifact (code block, markdown, diagram).
+      parameters:
+        - $ref: '#/components/parameters/CanvasIdParam'
+      responses:
+        '200':
+          description: Canvas artifact
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Canvas'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+    patch:
+      tags: [Canvas]
+      operationId: updateCanvas
+      summary: Update canvas content
+      description: Update canvas content (for user edits).
+      parameters:
+        - $ref: '#/components/parameters/CanvasIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                language:
+                  type: string
+      responses:
+        '200':
+          description: Canvas updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Canvas'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+  /chat/canvas/{canvasId}/versions:
+    get:
+      tags: [Canvas]
+      operationId: listCanvasVersions
+      summary: List canvas versions
+      parameters:
+        - $ref: '#/components/parameters/CanvasIdParam'
+      responses:
+        '200':
+          description: Canvas version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CanvasVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+
+# =============================================================================
+# COMPONENTS
+# =============================================================================
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key starting with `znt_test_sk_` or `znt_live_sk_`
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    SessionIdParam:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^sess_[a-zA-Z0-9]{16}$'
+    MessageIdParam:
+      name: messageId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^msg_[a-zA-Z0-9]{16}$'
+    FolderIdParam:
+      name: folderId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^fold_[a-zA-Z0-9]{16}$'
+    AgentIdParam:
+      name: agentId
+      in: path
+      required: true
+      schema:
+        type: string
+    AttachmentIdParam:
+      name: attachmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^att_[a-zA-Z0-9]{16}$'
+    CanvasIdParam:
+      name: canvasId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^canvas_[a-zA-Z0-9]{16}$'
+
+  schemas:
+    # -------------------------------------------------------------------------
+    # Sessions
+    # -------------------------------------------------------------------------
+    Session:
+      type: object
+      required: [id, userId, title, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: sess_abc123def456ghi7
+        userId:
+          type: string
+        title:
+          type: string
+        folderId:
+          type: string
+          nullable: true
+        agentId:
+          type: string
+          nullable: true
+          description: Default agent for this session
+        model:
+          type: string
+          description: Override model for this session
+        systemPrompt:
+          type: string
+          nullable: true
+        messageCount:
+          type: integer
+        tokenCount:
+          type: integer
+          description: Total tokens used in session
+        isArchived:
+          type: boolean
+          default: false
+        isPinned:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessageAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SessionWithMessages:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+            folder:
+              $ref: '#/components/schemas/Folder'
+            agent:
+              $ref: '#/components/schemas/Agent'
+
+    SessionListResponse:
+      type: object
+      required: [sessions, pagination]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CreateSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          description: Session title (auto-generated from first message if omitted)
+        folderId:
+          type: string
+          nullable: true
+        agentId:
+          type: string
+        model:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        initialMessage:
+          type: string
+          description: Optional first message to send immediately
+        metadata:
+          type: object
+
+    UpdateSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        folderId:
+          type: string
+          nullable: true
+        agentId:
+          type: string
+          nullable: true
+        model:
+          type: string
+        systemPrompt:
+          type: string
+          maxLength: 4000
+        isPinned:
+          type: boolean
+        metadata:
+          type: object
+
+    # -------------------------------------------------------------------------
+    # Messages
+    # -------------------------------------------------------------------------
+    Message:
+      type: object
+      required: [id, sessionId, role, content, createdAt]
+      properties:
+        id:
+          type: string
+          example: msg_abc123def456ghi7
+        sessionId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        canvases:
+          type: array
+          items:
+            $ref: '#/components/schemas/Canvas'
+          description: Code blocks/artifacts extracted from message
+        model:
+          type: string
+          description: Model used for assistant messages
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+        feedback:
+          $ref: '#/components/schemas/MessageFeedback'
+        parentId:
+          type: string
+          nullable: true
+          description: Parent message ID (for branching/edits)
+        versionNumber:
+          type: integer
+          default: 1
+          description: Version number for edited messages
+        isDeleted:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MessageListResponse:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+        prevCursor:
+          type: string
+          nullable: true
+
+    MessagePair:
+      type: object
+      properties:
+        userMessage:
+          $ref: '#/components/schemas/Message'
+        assistantMessage:
+          $ref: '#/components/schemas/Message'
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        attachmentIds:
+          type: array
+          items:
+            type: string
+          maxItems: 10
+        stream:
+          type: boolean
+          default: true
+        model:
+          type: string
+          description: Override session model for this message
+        systemPrompt:
+          type: string
+          maxLength: 4000
+          description: Override system prompt for this message
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+        maxTokens:
+          type: integer
+          minimum: 1
+          maximum: 16384
+
+    EditMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        regenerateResponse:
+          type: boolean
+          default: true
+          description: Also regenerate the AI response after edit
+
+    MessageEditResponse:
+      type: object
+      properties:
+        editedMessage:
+          $ref: '#/components/schemas/Message'
+        newResponse:
+          $ref: '#/components/schemas/Message'
+          description: New AI response (if regenerateResponse was true)
+        previousVersionId:
+          type: string
+          description: ID of the previous version
+
+    StreamingMessageResponse:
+      type: object
+      properties:
+        messageId:
+          type: string
+        sessionId:
+          type: string
+        websocketUrl:
+          type: string
+          format: uri
+          description: WebSocket URL for receiving stream chunks
+
+    MessageFeedback:
+      type: object
+      properties:
+        rating:
+          type: string
+          enum: [positive, negative]
+        comment:
+          type: string
+          maxLength: 1000
+
+    TokenUsage:
+      type: object
+      properties:
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
+        totalTokens:
+          type: integer
+
+    # -------------------------------------------------------------------------
+    # Folders
+    # -------------------------------------------------------------------------
+    Folder:
+      type: object
+      required: [id, userId, name, createdAt]
+      properties:
+        id:
+          type: string
+          example: fold_abc123def456ghi7
+        userId:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+          description: Hex color code
+        icon:
+          type: string
+          description: Icon name or emoji
+        parentId:
+          type: string
+          nullable: true
+        position:
+          type: integer
+          description: Sort order among siblings
+        sessionCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FolderWithSessions:
+      allOf:
+        - $ref: '#/components/schemas/Folder'
+        - type: object
+          properties:
+            sessions:
+              type: array
+              items:
+                $ref: '#/components/schemas/Session'
+            children:
+              type: array
+              items:
+                $ref: '#/components/schemas/Folder'
+
+    FolderListResponse:
+      type: object
+      properties:
+        folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Folder'
+        tree:
+          type: array
+          items:
+            $ref: '#/components/schemas/FolderWithSessions'
+          description: Nested folder structure (only if flat=false)
+
+    CreateFolderRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        color:
+          type: string
+        icon:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+        position:
+          type: integer
+
+    UpdateFolderRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        color:
+          type: string
+        icon:
+          type: string
+        position:
+          type: integer
+
+    # -------------------------------------------------------------------------
+    # Agents
+    # -------------------------------------------------------------------------
+    Agent:
+      type: object
+      required: [id, name, description]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        category:
+          type: string
+          enum: [general, code, writing, analysis, creative]
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: List of capability tags
+        defaultModel:
+          type: string
+        systemPrompt:
+          type: string
+          description: Base system prompt (may be truncated)
+        isDefault:
+          type: boolean
+        isEnabled:
+          type: boolean
+        metadata:
+          type: object
+
+    AgentListResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agent'
+
+    # -------------------------------------------------------------------------
+    # Settings
+    # -------------------------------------------------------------------------
+    UserSettings:
+      type: object
+      properties:
+        defaultAgentId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+        temperature:
+          type: number
+        maxTokens:
+          type: integer
+        streamResponses:
+          type: boolean
+          default: true
+        showTokenCount:
+          type: boolean
+          default: false
+        autoGenerateTitle:
+          type: boolean
+          default: true
+        codeTheme:
+          type: string
+          enum: [github-dark, github-light, monokai, dracula, one-dark]
+        fontSize:
+          type: string
+          enum: [small, medium, large]
+        compactMode:
+          type: boolean
+          default: false
+        showTimestamps:
+          type: boolean
+          default: true
+        enterToSend:
+          type: boolean
+          default: true
+        customSystemPrompt:
+          type: string
+          nullable: true
+        enabledAgents:
+          type: array
+          items:
+            type: string
+          description: List of agent IDs user has enabled
+
+    UpdateSettingsRequest:
+      type: object
+      properties:
+        defaultAgentId:
+          type: string
+          nullable: true
+        defaultModel:
+          type: string
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+        maxTokens:
+          type: integer
+          minimum: 1
+          maximum: 16384
+        streamResponses:
+          type: boolean
+        showTokenCount:
+          type: boolean
+        autoGenerateTitle:
+          type: boolean
+        codeTheme:
+          type: string
+        fontSize:
+          type: string
+        compactMode:
+          type: boolean
+        showTimestamps:
+          type: boolean
+        enterToSend:
+          type: boolean
+        customSystemPrompt:
+          type: string
+          nullable: true
+        enabledAgents:
+          type: array
+          items:
+            type: string
+
+    # -------------------------------------------------------------------------
+    # Attachments
+    # -------------------------------------------------------------------------
+    Attachment:
+      type: object
+      required: [id, filename, mimeType, size, createdAt]
+      properties:
+        id:
+          type: string
+          example: att_abc123def456ghi7
+        filename:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          description: File size in bytes
+        purpose:
+          type: string
+          enum: [chat-input, code-context, document-reference]
+        thumbnailUrl:
+          type: string
+          format: uri
+          nullable: true
+        downloadUrl:
+          type: string
+          format: uri
+        metadata:
+          type: object
+          properties:
+            width:
+              type: integer
+            height:
+              type: integer
+            duration:
+              type: number
+            pageCount:
+              type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    # -------------------------------------------------------------------------
+    # Canvas
+    # -------------------------------------------------------------------------
+    Canvas:
+      type: object
+      required: [id, type, content, createdAt]
+      properties:
+        id:
+          type: string
+          example: canvas_abc123def456ghi7
+        messageId:
+          type: string
+        type:
+          type: string
+          enum: [code, markdown, mermaid, latex, html]
+        language:
+          type: string
+          description: Programming language for code type
+        title:
+          type: string
+          nullable: true
+        content:
+          type: string
+        version:
+          type: integer
+          default: 1
+        isEditable:
+          type: boolean
+          default: true
+        previewUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to rendered preview (for HTML/mermaid)
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CanvasVersion:
+      type: object
+      properties:
+        version:
+          type: integer
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          enum: [user, assistant]
+
+    # -------------------------------------------------------------------------
+    # Common
+    # -------------------------------------------------------------------------
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            requestId:
+              type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Too many requests
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

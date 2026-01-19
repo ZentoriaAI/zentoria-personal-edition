@@ -1,0 +1,300 @@
+name: Deploy to Proxmox
+
+# Trigger on version tags (v*.*.*)
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version to deploy (tag name without v)'
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/zentoria
+  PROXMOX_HOST: ${{ secrets.PROXMOX_HOST || '100.121.19.12' }}
+  PROXMOX_USER: ${{ secrets.PROXMOX_USER || 'root' }}
+
+jobs:
+  # ============================================
+  # Prepare Deployment
+  # ============================================
+  prepare:
+    name: Prepare Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      environment: ${{ steps.env.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="dev-${GITHUB_SHA::8}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Deploying version: ${VERSION}"
+
+      - name: Determine environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || 'production' }}"
+          echo "environment=${ENV}" >> $GITHUB_OUTPUT
+          echo "Target environment: ${ENV}"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ ! $VERSION =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
+
+  # ============================================
+  # Build Docker Images
+  # ============================================
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # MCP Gateway
+      - name: Docker meta - MCP Gateway
+        id: meta-gateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-mcp-gateway
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }}
+            type=sha
+
+      - name: Build and push MCP Gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: ./mcp-gateway
+          push: true
+          tags: ${{ steps.meta-gateway.outputs.tags }}
+          labels: ${{ steps.meta-gateway.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+
+      # Frontend
+      - name: Docker meta - Frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }}
+            type=sha
+
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.prepare.outputs.version }}
+            NEXT_PUBLIC_API_URL=${{ secrets.API_URL || 'https://ai.zentoria.ai/api' }}
+            NEXT_PUBLIC_WS_URL=${{ secrets.WS_URL || 'wss://ai.zentoria.ai/ws' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================
+  # Deploy to Proxmox
+  # ============================================
+  deploy:
+    name: Deploy to ${{ needs.prepare.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [prepare, build-images]
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+      url: https://ai.zentoria.ai
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROXMOX_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ env.PROXMOX_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy via deployment script
+        run: |
+          # Copy deployment scripts to Proxmox
+          scp -r scripts/deploy "${{ env.PROXMOX_USER }}@${{ env.PROXMOX_HOST }}:/tmp/zentoria-deploy/" || true
+
+          # Run deployment
+          ssh "${{ env.PROXMOX_USER }}@${{ env.PROXMOX_HOST }}" << 'EOF'
+            set -e
+
+            echo "Starting deployment: ${{ needs.prepare.outputs.version }}"
+
+            # Set environment
+            export ENVIRONMENT="${{ needs.prepare.outputs.environment }}"
+            export VERSION="${{ needs.prepare.outputs.version }}"
+
+            # Deploy backend
+            echo "=== Deploying Backend ==="
+            bash /tmp/zentoria-deploy/deploy-backend.sh "$ENVIRONMENT" "$VERSION" || {
+              echo "Backend deployment failed"
+              exit 1
+            }
+
+            # Deploy frontend
+            echo "=== Deploying Frontend ==="
+            bash /tmp/zentoria-deploy/deploy-frontend.sh "$ENVIRONMENT" "$VERSION" || {
+              echo "Frontend deployment failed"
+              exit 1
+            }
+
+            echo "Deployment completed successfully"
+          EOF
+
+      - name: Verify deployment
+        run: |
+          ssh "${{ env.PROXMOX_USER }}@${{ env.PROXMOX_HOST }}" << 'EOF'
+            echo "=== Verifying Deployment ==="
+
+            # Check backend health
+            echo "Backend health check..."
+            for i in {1..10}; do
+              if pct exec 441 -- curl -sf http://localhost:3000/health > /dev/null; then
+                echo "Backend: OK"
+                break
+              fi
+              if [ $i -lt 10 ]; then sleep 5; fi
+            done
+
+            # Check frontend health
+            echo "Frontend health check..."
+            for i in {1..10}; do
+              if pct exec 440 -- curl -sf http://localhost:3000 > /dev/null; then
+                echo "Frontend: OK"
+                break
+              fi
+              if [ $i -lt 10 ]; then sleep 5; fi
+            done
+
+            # Check NGINX
+            echo "NGINX health check..."
+            pct exec 442 -- curl -sf http://localhost/health > /dev/null && echo "NGINX: OK" || echo "NGINX: FAIL"
+
+            # Check database
+            echo "Database health check..."
+            pct exec 404 -- psql -U zentoria zentoria_main -c "SELECT 1" > /dev/null && echo "Database: OK" || echo "Database: FAIL"
+
+            echo "=== Verification Complete ==="
+          EOF
+
+  # ============================================
+  # Post-Deployment
+  # ============================================
+  post-deploy:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy]
+    if: success()
+
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          draft: false
+          prerelease: ${{ needs.prepare.outputs.environment == 'staging' }}
+          body: |
+            # Deployment Summary
+
+            **Environment:** ${{ needs.prepare.outputs.environment }}
+            **Version:** ${{ needs.prepare.outputs.version }}
+            **Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+            ## Services Deployed
+            - MCP Gateway (Backend)
+            - Next.js Frontend
+            - Database Migrations
+
+            ## Access URLs
+            - Frontend: https://ai.zentoria.ai
+            - API: https://ai.zentoria.ai/api
+            - AI: https://ai.zentoria.ai/ai
+
+            ---
+            Deployed by GitHub Actions
+
+  # ============================================
+  # Notifications
+  # ============================================
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy]
+    if: always()
+
+    steps:
+      - name: Prepare notification
+        id: notify
+        run: |
+          STATUS="${{ needs.deploy.result }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+          ENV="${{ needs.prepare.outputs.environment }}"
+
+          if [ "$STATUS" = "success" ]; then
+            echo "message=✅ Deployment successful: $VERSION to $ENV" >> $GITHUB_OUTPUT
+          else
+            echo "message=❌ Deployment failed: $VERSION to $ENV" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add workflow status to summary
+        run: |
+          echo "## Deployment Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.notify.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ needs.prepare.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY

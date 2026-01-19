@@ -4,6 +4,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Configure seed command for database initialization
+// Run: npx prisma db seed
+// Or: npm run db:seed
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -120,4 +124,282 @@ model EmailHistory {
   @@index([userId])
   @@index([sentAt])
   @@map("email_history")
+}
+
+// =============================================================================
+// ENHANCED CHAT INTERFACE MODELS
+// =============================================================================
+
+// Project Folders - Organize chats into logical groupings
+model ProjectFolder {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  name        String
+  description String?
+  color       String?   @default("#6366f1")
+  icon        String?   @default("folder")
+  parentId    String?   @map("parent_id")
+  sortOrder   Int       @default(0) @map("sort_order")
+  metadata    Json      @default("{}")
+  isArchived  Boolean   @default(false) @map("is_archived")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  parent       ProjectFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     ProjectFolder[] @relation("FolderHierarchy")
+  chatSessions ChatSession[]
+
+  @@index([userId])
+  @@index([userId, isArchived])
+  @@index([parentId])
+  @@index([userId, sortOrder])
+  @@map("project_folders")
+}
+
+// AI Agents - Available AI agents with capabilities
+model Agent {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  displayName  String   @map("display_name")
+  description  String?
+  systemPrompt String?  @map("system_prompt") @db.Text
+  model        String   @default("llama3.2:3b")
+  temperature  Float    @default(0.7)
+  maxTokens    Int?     @map("max_tokens")
+  capabilities String[]
+  tools        Json     @default("[]")
+  metadata     Json     @default("{}")
+  isActive     Boolean  @default(true) @map("is_active")
+  isDefault    Boolean  @default(false) @map("is_default")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  chatSessions ChatSession[]
+  userSettings UserSettings[]
+
+  @@index([isActive])
+  @@index([isDefault])
+  @@index([name])
+  @@map("agents")
+}
+
+// Chat Sessions - Persistent conversation containers
+model ChatSession {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  folderId      String?   @map("folder_id")
+  agentId       String?   @map("agent_id")
+  title         String    @default("New Chat")
+  summary       String?   @db.Text
+  systemPrompt  String?   @map("system_prompt") @db.Text
+  model         String?
+  temperature   Float?
+  contextWindow Int       @default(10) @map("context_window")
+  metadata      Json      @default("{}")
+  isPinned      Boolean   @default(false) @map("is_pinned")
+  isArchived    Boolean   @default(false) @map("is_archived")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  deletedAt     DateTime? @map("deleted_at")
+  lastMessageAt DateTime? @map("last_message_at")
+  messageCount  Int       @default(0) @map("message_count")
+  tokenCount    Int       @default(0) @map("token_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  folder      ProjectFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  agent       Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  messages    ChatMessage[]
+  sessionTags SessionTag[]
+  canvases    Canvas[]
+
+  @@index([userId])
+  @@index([userId, isDeleted])
+  @@index([userId, isArchived, isDeleted])
+  @@index([userId, lastMessageAt])
+  @@index([userId, createdAt])
+  @@index([userId, isPinned, lastMessageAt])
+  @@index([folderId])
+  @@index([agentId])
+  @@map("chat_sessions")
+}
+
+// Session Tags - Flexible tagging for chat sessions
+model SessionTag {
+  id        String   @id @default(cuid())
+  sessionId String   @map("session_id")
+  tag       String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, tag])
+  @@index([tag])
+  @@index([sessionId])
+  @@map("session_tags")
+}
+
+// Chat Messages - Individual messages within sessions
+model ChatMessage {
+  id               String    @id @default(cuid())
+  sessionId        String    @map("session_id")
+  parentId         String?   @map("parent_id")
+  role             String
+  content          String    @db.Text
+  contentFormat    String    @default("text") @map("content_format")
+  model            String?
+  promptTokens     Int?      @map("prompt_tokens")
+  completionTokens Int?      @map("completion_tokens")
+  durationMs       Int?      @map("duration_ms")
+  toolCalls        Json?     @map("tool_calls")
+  toolResults      Json?     @map("tool_results")
+  metadata         Json      @default("{}")
+  isEdited         Boolean   @default(false) @map("is_edited")
+  editedAt         DateTime? @map("edited_at")
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  session     ChatSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  parent      ChatMessage?        @relation("MessageThread", fields: [parentId], references: [id], onDelete: SetNull)
+  replies     ChatMessage[]       @relation("MessageThread")
+  attachments MessageAttachment[]
+  reactions   MessageReaction[]
+
+  @@index([sessionId])
+  @@index([sessionId, isDeleted])
+  @@index([sessionId, createdAt])
+  @@index([sessionId, role])
+  @@index([parentId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// Message Attachments - Link files to messages
+model MessageAttachment {
+  id          String   @id @default(cuid())
+  messageId   String   @map("message_id")
+  fileId      String   @map("file_id")
+  displayName String?  @map("display_name")
+  description String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, fileId])
+  @@index([messageId])
+  @@index([fileId])
+  @@map("message_attachments")
+}
+
+// Message Reactions - Emoji reactions on messages
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
+}
+
+// Canvas - Code blocks and artifacts from AI responses
+model Canvas {
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
+  messageId   String?  @map("message_id")
+  title       String
+  language    String?
+  content     String   @db.Text
+  contentType String   @default("code") @map("content_type")
+  metadata    Json     @default("{}")
+  isPinned    Boolean  @default(false) @map("is_pinned")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  session  ChatSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  versions CanvasVersion[]
+
+  @@index([sessionId])
+  @@index([messageId])
+  @@index([sessionId, isPinned])
+  @@map("canvases")
+}
+
+// Canvas Versions - Version history for edits
+model CanvasVersion {
+  id        String   @id @default(cuid())
+  canvasId  String   @map("canvas_id")
+  content   String   @db.Text
+  version   Int
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  canvas Canvas @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+
+  @@unique([canvasId, version])
+  @@index([canvasId])
+  @@map("canvas_versions")
+}
+
+// User Settings - AI preferences and configuration
+model UserSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique @map("user_id")
+  defaultAgentId      String?  @map("default_agent_id")
+  defaultModel        String   @default("llama3.2:3b") @map("default_model")
+  defaultTemperature  Float    @default(0.7) @map("default_temperature")
+  defaultMaxTokens    Int?     @map("default_max_tokens")
+  defaultSystemPrompt String?  @map("default_system_prompt") @db.Text
+  contextWindow       Int      @default(10) @map("context_window")
+  streamResponses     Boolean  @default(true) @map("stream_responses")
+  showTokenCounts     Boolean  @default(false) @map("show_token_counts")
+  autoGenerateTitles  Boolean  @default(true) @map("auto_generate_titles")
+  saveHistory         Boolean  @default(true) @map("save_history")
+  theme               String   @default("system")
+  fontSize            String   @default("medium") @map("font_size")
+  codeTheme           String   @default("github-dark") @map("code_theme")
+  sendOnEnter         Boolean  @default(true) @map("send_on_enter")
+  enableSounds        Boolean  @default(false) @map("enable_sounds")
+  enableNotifications Boolean  @default(true) @map("enable_notifications")
+  keyboardShortcuts   Json     @default("{}") @map("keyboard_shortcuts")
+  customPrompts       Json     @default("[]") @map("custom_prompts")
+  metadata            Json     @default("{}")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  defaultAgent Agent? @relation(fields: [defaultAgentId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("user_settings")
+}
+
+// Prompt Templates - Reusable prompt templates
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  name        String
+  description String?
+  content     String   @db.Text
+  variables   String[]
+  category    String   @default("general")
+  tags        String[]
+  isPublic    Boolean  @default(false) @map("is_public")
+  usageCount  Int      @default(0) @map("usage_count")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([category])
+  @@index([isPublic])
+  @@index([usageCount])
+  @@map("prompt_templates")
 }

@@ -118,6 +118,27 @@ export const SIZE_LIMITS = {
 
   /** Maximum API key name length */
   MAX_API_KEY_NAME_LENGTH: 100,
+
+  /** Maximum chat message length - Enhanced Chat Interface */
+  MAX_MESSAGE_LENGTH: 32000,
+
+  /** Maximum session title length - Enhanced Chat Interface */
+  MAX_SESSION_TITLE_LENGTH: 200,
+
+  /** Maximum folder name length - Enhanced Chat Interface */
+  MAX_FOLDER_NAME_LENGTH: 100,
+
+  /** Maximum folder description length - Enhanced Chat Interface */
+  MAX_FOLDER_DESCRIPTION_LENGTH: 500,
+
+  /** Maximum custom prompt content length - Enhanced Chat Interface */
+  MAX_CUSTOM_PROMPT_LENGTH: 10000,
+
+  /** Maximum attachments per message - Enhanced Chat Interface */
+  MAX_ATTACHMENTS_PER_MESSAGE: 10,
+
+  /** Maximum folder nesting depth - Enhanced Chat Interface */
+  MAX_FOLDER_DEPTH: 3,
 } as const;
 
 // ============================================================================
@@ -136,6 +157,18 @@ export const CACHE = {
 
   /** Health check cache TTL in seconds */
   HEALTH_CHECK_TTL_SECONDS: envInt('HEALTH_CHECK_CACHE_TTL_SECONDS', 10),
+
+  /** Agent list cache TTL in seconds - Enhanced Chat Interface */
+  AGENT_TTL_SECONDS: envInt('AGENT_CACHE_TTL_SECONDS', 3600), // 1 hour
+
+  /** Folder tree cache TTL in seconds - Enhanced Chat Interface */
+  FOLDER_TTL_SECONDS: envInt('FOLDER_CACHE_TTL_SECONDS', 1800), // 30 minutes
+
+  /** User settings cache TTL in seconds - Enhanced Chat Interface */
+  SETTINGS_TTL_SECONDS: envInt('SETTINGS_CACHE_TTL_SECONDS', 3600), // 1 hour
+
+  /** Chat session cache TTL in seconds - Enhanced Chat Interface */
+  CHAT_SESSION_TTL_SECONDS: envInt('CHAT_SESSION_CACHE_TTL_SECONDS', 600), // 10 minutes
 } as const;
 
 // ============================================================================
@@ -205,6 +238,15 @@ export const PAGINATION = {
 
   /** Default offset */
   DEFAULT_OFFSET: 0,
+
+  /** Default messages per page - Enhanced Chat Interface */
+  DEFAULT_MESSAGES_PAGE_SIZE: 50,
+
+  /** Maximum messages per page - Enhanced Chat Interface */
+  MAX_MESSAGES_PAGE_SIZE: 100,
+
+  /** Default sessions per page - Enhanced Chat Interface */
+  DEFAULT_SESSIONS_PAGE_SIZE: 20,
 } as const;
 
 // ============================================================================

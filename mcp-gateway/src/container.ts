@@ -32,6 +32,9 @@ import { WorkflowService } from './services/workflow.service.js';
 import { VaultService } from './services/vault.service.js';
 import { HealthService } from './services/health.service.js';
 import { RefreshTokenService } from './services/refresh-token.service.js'; // SEC-010
+import { ChatService } from './services/chat.service.js';
+import { FolderService } from './services/folder.service.js';
+import { SettingsService } from './services/settings.service.js';
 
 // Repositories
 import { ApiKeyRepository } from './repositories/api-key.repository.js';
@@ -64,6 +67,9 @@ export interface ContainerCradle {
   vaultService: VaultService;
   healthService: HealthService;
   refreshTokenService: RefreshTokenService; // SEC-010: JWT refresh tokens
+  chatService: ChatService;
+  folderService: FolderService;
+  settingsService: SettingsService;
 
   // Repositories
   apiKeyRepository: ApiKeyRepository;
@@ -122,6 +128,9 @@ export async function createContainer(): Promise<AwilixContainer<ContainerCradle
     vaultService: asClass(VaultService, { lifetime: Lifetime.SINGLETON }),
     healthService: asClass(HealthService, { lifetime: Lifetime.SINGLETON }),
     refreshTokenService: asClass(RefreshTokenService, { lifetime: Lifetime.SINGLETON }), // SEC-010
+    chatService: asClass(ChatService, { lifetime: Lifetime.SINGLETON }),
+    folderService: asClass(FolderService, { lifetime: Lifetime.SINGLETON }),
+    settingsService: asClass(SettingsService, { lifetime: Lifetime.SINGLETON }),
   });
 
   logger.info('Dependency container created');
