@@ -492,8 +492,8 @@ class ApiClient {
 
   async triggerWorkflow(id: string, inputData?: Record<string, unknown>): Promise<WorkflowExecution> {
     const { data } = await this.client.post<ApiResponse<WorkflowExecution>>(
-      `/workflows/${id}/trigger`,
-      { data: inputData }
+      '/workflows/trigger',
+      { workflowId: id, payload: inputData }
     );
     return data.data!;
   }
@@ -515,20 +515,20 @@ class ApiClient {
   // ============================
 
   async listApiKeys(): Promise<ApiKey[]> {
-    const { data } = await this.client.get<ApiResponse<ApiKey[]>>('/keys');
+    const { data } = await this.client.get<ApiResponse<ApiKey[]>>('/mcp/keys');
     return data.data!;
   }
 
   async createApiKey(request: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
     const { data } = await this.client.post<ApiResponse<CreateApiKeyResponse>>(
-      '/keys',
+      '/mcp/create-key',
       request
     );
     return data.data!;
   }
 
   async revokeApiKey(id: string): Promise<void> {
-    await this.client.delete(`/keys/${id}`);
+    await this.client.delete(`/mcp/keys/${id}`);
   }
 
   /**
