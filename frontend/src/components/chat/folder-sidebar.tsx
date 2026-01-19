@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Folder,
@@ -28,7 +28,6 @@ import { chatApi } from '@/lib/chat-api';
 import {
   useEnhancedChatStore,
   useFolderState,
-  selectFilteredSessions,
   selectCurrentSession,
 } from '@/stores/enhanced-chat-store';
 import { toast } from '@/stores/app-store';
@@ -47,7 +46,6 @@ export function FolderSidebar({
 }: FolderSidebarProps) {
   const queryClient = useQueryClient();
   const { folders, expandedFolders, selectedFolderId } = useFolderState();
-  const filteredSessions = useEnhancedChatStore(selectFilteredSessions);
   const currentSession = useEnhancedChatStore(selectCurrentSession);
   const {
     toggleFolderExpanded,
@@ -58,6 +56,34 @@ export function FolderSidebar({
   const searchQuery = useEnhancedChatStore((state) => state.searchQuery);
   const showArchivedSessions = useEnhancedChatStore((state) => state.showArchivedSessions);
   const setShowArchivedSessions = useEnhancedChatStore((state) => state.setShowArchivedSessions);
+  const sessions = useEnhancedChatStore((state) => state.sessions);
+
+  // Filter sessions locally with useMemo to prevent infinite re-renders
+  // (selectFilteredSessions creates new array refs which would cause re-render loops)
+  const filteredSessions = useMemo(() => {
+    let filtered = sessions;
+
+    if (!showArchivedSessions) {
+      filtered = filtered.filter((s) => !s.isArchived);
+    }
+
+    if (selectedFolderId === 'unfiled') {
+      filtered = filtered.filter((s) => !s.folderId);
+    } else if (selectedFolderId) {
+      filtered = filtered.filter((s) => s.folderId === selectedFolderId);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (s) =>
+          s.title.toLowerCase().includes(query) ||
+          s.agent?.displayName.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [sessions, showArchivedSessions, selectedFolderId, searchQuery]);
 
   // Fetch folders
   const { data: folderData } = useQuery({

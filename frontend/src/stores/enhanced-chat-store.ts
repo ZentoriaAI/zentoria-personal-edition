@@ -357,6 +357,10 @@ export const useEnhancedChatStore = create<EnhancedChatState>()(
 // Selector Functions (PERF-011)
 // ============================
 
+// Stable empty arrays to prevent re-renders when returning empty results
+const EMPTY_MESSAGES: EnhancedChatMessage[] = [];
+const EMPTY_CANVASES: Canvas[] = [];
+
 /** Select current session */
 export const selectCurrentSession = (state: EnhancedChatState): ChatSession | null => {
   if (!state.currentSessionId) return null;
@@ -370,13 +374,13 @@ export const selectCurrentSessionId = (state: EnhancedChatState): string | null 
 
 /** Select messages for current session */
 export const selectCurrentMessages = (state: EnhancedChatState): EnhancedChatMessage[] => {
-  if (!state.currentSessionId) return [];
-  return state.messages.get(state.currentSessionId) || [];
+  if (!state.currentSessionId) return EMPTY_MESSAGES;
+  return state.messages.get(state.currentSessionId) || EMPTY_MESSAGES;
 };
 
 /** Select messages by session ID */
 export const selectMessagesBySession = (sessionId: string) => (state: EnhancedChatState): EnhancedChatMessage[] => {
-  return state.messages.get(sessionId) || [];
+  return state.messages.get(sessionId) || EMPTY_MESSAGES;
 };
 
 /** Select filtered sessions (by folder, search, archived) */
@@ -436,8 +440,8 @@ export const selectCanvasState = (state: EnhancedChatState) => ({
 
 /** Select current canvases */
 export const selectCurrentCanvases = (state: EnhancedChatState): Canvas[] => {
-  if (!state.currentSessionId) return [];
-  return state.canvases.get(state.currentSessionId) || [];
+  if (!state.currentSessionId) return EMPTY_CANVASES;
+  return state.canvases.get(state.currentSessionId) || EMPTY_CANVASES;
 };
 
 /** Select agents list */
