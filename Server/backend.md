@@ -22,10 +22,10 @@ Complete API reference for the Zentoria MCP Server backend services.
 
 The Zentoria MCP Server consists of two primary backend services:
 
-| Service | Container | Port | Technology | Purpose |
-|---------|-----------|------|------------|---------|
-| **MCP Gateway** | 441 | 4000 | Node.js/Fastify | API gateway, auth, file management |
-| **AI Orchestrator** | 444 | 8080 | Python/FastAPI | AI agents, RAG, LLM routing |
+| Service             | Container | Port | Technology      | Purpose                            |
+| ------------------- | --------- | ---- | --------------- | ---------------------------------- |
+| **MCP Gateway**     | 441       | 4000 | Node.js/Fastify | API gateway, auth, file management |
+| **AI Orchestrator** | 444       | 8080 | Python/FastAPI  | AI agents, RAG, LLM routing        |
 
 ### Base URLs
 
@@ -71,18 +71,18 @@ curl -H "X-API-Key: znt_live_sk_..." \
 
 ### Available Scopes
 
-| Scope | Description |
-|-------|-------------|
-| `files.read` | Read file metadata and download files |
-| `files.write` | Upload and modify files |
-| `files.delete` | Delete files |
-| `ai.chat` | Process AI commands and chat |
-| `ai.complete` | Code completion operations |
-| `workflows.trigger` | Trigger n8n workflows |
-| `workflows.read` | Read workflow status |
-| `email.send` | Send emails |
-| `keys.manage` | Create and revoke API keys |
-| `admin` | Full administrative access |
+| Scope               | Description                           |
+| ------------------- | ------------------------------------- |
+| `files.read`        | Read file metadata and download files |
+| `files.write`       | Upload and modify files               |
+| `files.delete`      | Delete files                          |
+| `ai.chat`           | Process AI commands and chat          |
+| `ai.complete`       | Code completion operations            |
+| `workflows.trigger` | Trigger n8n workflows                 |
+| `workflows.read`    | Read workflow status                  |
+| `email.send`        | Send emails                           |
+| `keys.manage`       | Create and revoke API keys            |
+| `admin`             | Full administrative access            |
 
 ### Public Endpoints (No Auth Required)
 
@@ -94,6 +94,7 @@ curl -H "X-API-Key: znt_live_sk_..." \
 ### Token Management
 
 **Refresh Token Exchange:**
+
 ```bash
 POST /api/v1/auth/refresh
 Content-Type: application/json
@@ -104,6 +105,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "accessToken": "eyJ...",
@@ -118,18 +120,19 @@ Content-Type: application/json
 
 ## MCP Gateway API
 
-The MCP Gateway (Container 441) provides 45+ endpoints across 14 route modules.
+The MCP Gateway (Container 441) provides 73 endpoints across 14 route modules.
 
 ### Health Endpoints
 
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/v1/health` | GET | No | Full health check with dependencies |
-| `/api/v1/health/ready` | GET | No | Kubernetes readiness probe |
-| `/api/v1/health/live` | GET | No | Kubernetes liveness probe |
-| `/api/v1/health/metrics` | GET | No | System metrics (CPU, memory, disk) |
+| Endpoint                 | Method | Auth | Description                         |
+| ------------------------ | ------ | ---- | ----------------------------------- |
+| `/api/v1/health`         | GET    | No   | Full health check with dependencies |
+| `/api/v1/health/ready`   | GET    | No   | Kubernetes readiness probe          |
+| `/api/v1/health/live`    | GET    | No   | Kubernetes liveness probe           |
+| `/api/v1/health/metrics` | GET    | No   | System metrics (CPU, memory, disk)  |
 
 **Health Response:**
+
 ```json
 {
   "status": "healthy",
@@ -148,27 +151,28 @@ The MCP Gateway (Container 441) provides 45+ endpoints across 14 route modules.
 
 ### Authentication Endpoints
 
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/api/v1/auth/refresh` | POST | No | Exchange refresh token for new pair |
-| `/api/v1/auth/token` | POST | Yes | Generate initial token pair |
-| `/api/v1/auth/logout` | POST | Yes | Revoke single refresh token |
-| `/api/v1/auth/logout-all` | POST | Yes | Logout from all devices |
-| `/api/v1/auth/sessions` | GET | Yes | Get active session count |
-| `/api/v1/auth/request-access` | POST | No | Request API access (rate limited) |
+| Endpoint                      | Method | Auth | Description                         |
+| ----------------------------- | ------ | ---- | ----------------------------------- |
+| `/api/v1/auth/refresh`        | POST   | No   | Exchange refresh token for new pair |
+| `/api/v1/auth/token`          | POST   | Yes  | Generate initial token pair         |
+| `/api/v1/auth/logout`         | POST   | Yes  | Revoke single refresh token         |
+| `/api/v1/auth/logout-all`     | POST   | Yes  | Logout from all devices             |
+| `/api/v1/auth/sessions`       | GET    | Yes  | Get active session count            |
+| `/api/v1/auth/request-access` | POST   | No   | Request API access (rate limited)   |
 
 ---
 
 ### API Key Management
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/mcp/create-key` | POST | `keys.manage` | Create new API key |
-| `/api/v1/mcp/keys` | GET | `keys.manage` | List user's API keys |
-| `/api/v1/mcp/keys/:keyId` | DELETE | `keys.manage` | Revoke API key |
-| `/api/v1/mcp/forgot-key` | POST | None | Request key via email (rate limited) |
+| Endpoint                  | Method | Scope         | Description                          |
+| ------------------------- | ------ | ------------- | ------------------------------------ |
+| `/api/v1/mcp/create-key`  | POST   | `keys.manage` | Create new API key                   |
+| `/api/v1/mcp/keys`        | GET    | `keys.manage` | List user's API keys                 |
+| `/api/v1/mcp/keys/:keyId` | DELETE | `keys.manage` | Revoke API key                       |
+| `/api/v1/mcp/forgot-key`  | POST   | None          | Request key via email (rate limited) |
 
 **Create API Key:**
+
 ```bash
 POST /api/v1/mcp/create-key
 Authorization: Bearer <token>
@@ -186,6 +190,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "id": "key_abc123",
@@ -201,18 +206,19 @@ Content-Type: application/json
 
 ### File Management
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/mcp/upload` | POST | `files.write` | Upload file |
-| `/api/v1/mcp/files` | GET | `files.read` | List files (paginated) |
-| `/api/v1/mcp/files/:fileId` | GET | `files.read` | Get file metadata |
-| `/api/v1/mcp/files/:fileId` | DELETE | `files.delete` | Delete file |
-| `/api/v1/mcp/files/:fileId/download` | GET | `files.read` | Download file |
-| `/api/v1/mcp/files/folder` | POST | `files.write` | Create virtual folder |
-| `/api/v1/mcp/files/:fileId/rename` | PATCH | `files.write` | Rename file |
-| `/api/v1/mcp/files/:fileId/move` | PATCH | `files.write` | Move file |
+| Endpoint                             | Method | Scope          | Description            |
+| ------------------------------------ | ------ | -------------- | ---------------------- |
+| `/api/v1/mcp/upload`                 | POST   | `files.write`  | Upload file            |
+| `/api/v1/mcp/files`                  | GET    | `files.read`   | List files (paginated) |
+| `/api/v1/mcp/files/:fileId`          | GET    | `files.read`   | Get file metadata      |
+| `/api/v1/mcp/files/:fileId`          | DELETE | `files.delete` | Delete file            |
+| `/api/v1/mcp/files/:fileId/download` | GET    | `files.read`   | Download file          |
+| `/api/v1/mcp/files/folder`           | POST   | `files.write`  | Create virtual folder  |
+| `/api/v1/mcp/files/:fileId/rename`   | PATCH  | `files.write`  | Rename file            |
+| `/api/v1/mcp/files/:fileId/move`     | PATCH  | `files.write`  | Move file              |
 
 **Upload File:**
+
 ```bash
 POST /api/v1/mcp/upload
 Authorization: Bearer <token>
@@ -223,6 +229,7 @@ purpose: "ai-input"
 ```
 
 **List Files:**
+
 ```bash
 GET /api/v1/mcp/files?page=1&limit=20&purpose=ai-input
 Authorization: Bearer <token>
@@ -238,6 +245,7 @@ Authorization: Bearer <token>
 | `createdBefore` | datetime | - | Filter by creation date |
 
 **File Response:**
+
 ```json
 {
   "id": "file_abc123",
@@ -257,16 +265,17 @@ Authorization: Bearer <token>
 
 #### Session Endpoints
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/chat/sessions` | GET | `ai.chat` | List sessions |
-| `/api/v1/chat/sessions` | POST | `ai.chat` | Create session |
-| `/api/v1/chat/sessions/:sessionId` | GET | `ai.chat` | Get session |
-| `/api/v1/chat/sessions/:sessionId` | PATCH | `ai.chat` | Update session |
-| `/api/v1/chat/sessions/:sessionId` | DELETE | `ai.chat` | Delete session |
-| `/api/v1/chat/sessions/:sessionId/duplicate` | POST | `ai.chat` | Duplicate session |
+| Endpoint                                     | Method | Scope     | Description       |
+| -------------------------------------------- | ------ | --------- | ----------------- |
+| `/api/v1/chat/sessions`                      | GET    | `ai.chat` | List sessions     |
+| `/api/v1/chat/sessions`                      | POST   | `ai.chat` | Create session    |
+| `/api/v1/chat/sessions/:sessionId`           | GET    | `ai.chat` | Get session       |
+| `/api/v1/chat/sessions/:sessionId`           | PATCH  | `ai.chat` | Update session    |
+| `/api/v1/chat/sessions/:sessionId`           | DELETE | `ai.chat` | Delete session    |
+| `/api/v1/chat/sessions/:sessionId/duplicate` | POST   | `ai.chat` | Duplicate session |
 
 **List Sessions:**
+
 ```bash
 GET /api/v1/chat/sessions?page=1&pageSize=20&sortBy=lastMessageAt&sortOrder=desc
 ```
@@ -284,14 +293,15 @@ GET /api/v1/chat/sessions?page=1&pageSize=20&sortBy=lastMessageAt&sortOrder=desc
 
 #### Message Endpoints
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/chat/sessions/:sessionId/messages` | GET | `ai.chat` | Get messages |
-| `/api/v1/chat/sessions/:sessionId/messages` | POST | `ai.chat` | Send message |
-| `/api/v1/chat/sessions/:sessionId/messages/:messageId` | PATCH | `ai.chat` | Edit message |
+| Endpoint                                               | Method | Scope     | Description    |
+| ------------------------------------------------------ | ------ | --------- | -------------- |
+| `/api/v1/chat/sessions/:sessionId/messages`            | GET    | `ai.chat` | Get messages   |
+| `/api/v1/chat/sessions/:sessionId/messages`            | POST   | `ai.chat` | Send message   |
+| `/api/v1/chat/sessions/:sessionId/messages/:messageId` | PATCH  | `ai.chat` | Edit message   |
 | `/api/v1/chat/sessions/:sessionId/messages/:messageId` | DELETE | `ai.chat` | Delete message |
 
 **Send Message (Streaming):**
+
 ```bash
 POST /api/v1/chat/sessions/sess_abc123/messages
 Authorization: Bearer <token>
@@ -306,6 +316,7 @@ Accept: text/event-stream
 ```
 
 **SSE Response:**
+
 ```
 event: start
 data: {"session_id":"sess_abc123","agent":"chat","ai_source":"local"}
@@ -321,6 +332,7 @@ data: {"session_id":"sess_abc123","total_length":1234}
 ```
 
 **Send Message (Non-Streaming):**
+
 ```bash
 POST /api/v1/chat/sessions/sess_abc123/messages
 Content-Type: application/json
@@ -335,17 +347,18 @@ Content-Type: application/json
 
 ### Folder Management
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/folders` | GET | `ai.chat` | Get folder tree |
-| `/api/v1/folders` | POST | `ai.chat` | Create folder |
-| `/api/v1/folders/:folderId` | GET | `ai.chat` | Get folder |
-| `/api/v1/folders/:folderId` | PATCH | `ai.chat` | Update folder |
-| `/api/v1/folders/:folderId` | DELETE | `ai.chat` | Delete folder |
-| `/api/v1/folders/reorder` | POST | `ai.chat` | Reorder folders |
-| `/api/v1/folders/:folderId/move-sessions` | POST | `ai.chat` | Move sessions to folder |
+| Endpoint                                  | Method | Scope     | Description             |
+| ----------------------------------------- | ------ | --------- | ----------------------- |
+| `/api/v1/folders`                         | GET    | `ai.chat` | Get folder tree         |
+| `/api/v1/folders`                         | POST   | `ai.chat` | Create folder           |
+| `/api/v1/folders/:folderId`               | GET    | `ai.chat` | Get folder              |
+| `/api/v1/folders/:folderId`               | PATCH  | `ai.chat` | Update folder           |
+| `/api/v1/folders/:folderId`               | DELETE | `ai.chat` | Delete folder           |
+| `/api/v1/folders/reorder`                 | POST   | `ai.chat` | Reorder folders         |
+| `/api/v1/folders/:folderId/move-sessions` | POST   | `ai.chat` | Move sessions to folder |
 
 **Create Folder:**
+
 ```json
 {
   "name": "Work Projects",
@@ -360,13 +373,14 @@ Content-Type: application/json
 
 ### MCP Command Processing
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/mcp/command` | POST | `ai.chat` | Process AI command |
-| `/api/v1/mcp/command/:commandId` | GET | `ai.chat` | Get async command status |
-| `/api/v1/mcp/email` | POST | `email.send` | Send email |
+| Endpoint                         | Method | Scope        | Description              |
+| -------------------------------- | ------ | ------------ | ------------------------ |
+| `/api/v1/mcp/command`            | POST   | `ai.chat`    | Process AI command       |
+| `/api/v1/mcp/command/:commandId` | GET    | `ai.chat`    | Get async command status |
+| `/api/v1/mcp/email`              | POST   | `email.send` | Send email               |
 
 **Process Command:**
+
 ```bash
 POST /api/v1/mcp/command
 Authorization: Bearer <token>
@@ -391,6 +405,7 @@ Content-Type: application/json
 ```
 
 **Sync Response:**
+
 ```json
 {
   "result": "Here's a Python sorting function...",
@@ -406,6 +421,7 @@ Content-Type: application/json
 ```
 
 **Async Response (202):**
+
 ```json
 {
   "executionId": "exec_abc123",
@@ -420,15 +436,16 @@ Content-Type: application/json
 
 ### Workflow Management
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/workflows` | GET | `workflows.read` | List workflows |
-| `/api/v1/workflows/trigger` | POST | `workflows.trigger` | Trigger workflow |
-| `/api/v1/workflows/executions` | GET | `workflows.read` | List executions |
-| `/api/v1/workflows/:executionId` | GET | `workflows.read` | Get execution status |
-| `/api/v1/workflows/callback` | POST | - | Webhook callback from n8n |
+| Endpoint                         | Method | Scope               | Description               |
+| -------------------------------- | ------ | ------------------- | ------------------------- |
+| `/api/v1/workflows`              | GET    | `workflows.read`    | List workflows            |
+| `/api/v1/workflows/trigger`      | POST   | `workflows.trigger` | Trigger workflow          |
+| `/api/v1/workflows/executions`   | GET    | `workflows.read`    | List executions           |
+| `/api/v1/workflows/:executionId` | GET    | `workflows.read`    | Get execution status      |
+| `/api/v1/workflows/callback`     | POST   | -                   | Webhook callback from n8n |
 
 **Trigger Workflow:**
+
 ```bash
 POST /api/v1/workflows/trigger
 Authorization: Bearer <token>
@@ -447,18 +464,19 @@ Content-Type: application/json
 
 ### Settings Management
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/settings` | GET | `ai.chat` | Get user settings |
-| `/api/v1/settings` | PATCH | `ai.chat` | Update settings |
-| `/api/v1/settings/reset` | POST | `ai.chat` | Reset to defaults |
-| `/api/v1/settings/models` | GET | `ai.chat` | Get available models |
-| `/api/v1/settings/prompts` | POST | `ai.chat` | Add custom prompt |
-| `/api/v1/settings/prompts/:promptId` | DELETE | `ai.chat` | Remove prompt |
-| `/api/v1/settings/export` | GET | `ai.chat` | Export settings |
-| `/api/v1/settings/import` | POST | `ai.chat` | Import settings |
+| Endpoint                             | Method | Scope     | Description          |
+| ------------------------------------ | ------ | --------- | -------------------- |
+| `/api/v1/settings`                   | GET    | `ai.chat` | Get user settings    |
+| `/api/v1/settings`                   | PATCH  | `ai.chat` | Update settings      |
+| `/api/v1/settings/reset`             | POST   | `ai.chat` | Reset to defaults    |
+| `/api/v1/settings/models`            | GET    | `ai.chat` | Get available models |
+| `/api/v1/settings/prompts`           | POST   | `ai.chat` | Add custom prompt    |
+| `/api/v1/settings/prompts/:promptId` | DELETE | `ai.chat` | Remove prompt        |
+| `/api/v1/settings/export`            | GET    | `ai.chat` | Export settings      |
+| `/api/v1/settings/import`            | POST   | `ai.chat` | Import settings      |
 
 **Settings Schema:**
+
 ```json
 {
   "defaultAgentId": "chat",
@@ -484,16 +502,17 @@ Content-Type: application/json
 
 ### External AI Keys
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/settings/ai-keys` | GET | `ai.chat` | List external AI keys |
-| `/api/v1/settings/ai-keys` | POST | `ai.chat` | Add AI key |
-| `/api/v1/settings/ai-keys/:keyId` | DELETE | `ai.chat` | Delete AI key |
-| `/api/v1/settings/ai-keys/:keyId/default` | PATCH | `ai.chat` | Set as default |
-| `/api/v1/settings/ai-keys/validate` | POST | `ai.chat` | Validate key |
-| `/api/v1/settings/ai-keys/providers` | GET | `ai.chat` | Get configured providers |
+| Endpoint                                  | Method | Scope     | Description              |
+| ----------------------------------------- | ------ | --------- | ------------------------ |
+| `/api/v1/settings/ai-keys`                | GET    | `ai.chat` | List external AI keys    |
+| `/api/v1/settings/ai-keys`                | POST   | `ai.chat` | Add AI key               |
+| `/api/v1/settings/ai-keys/:keyId`         | DELETE | `ai.chat` | Delete AI key            |
+| `/api/v1/settings/ai-keys/:keyId/default` | PATCH  | `ai.chat` | Set as default           |
+| `/api/v1/settings/ai-keys/validate`       | POST   | `ai.chat` | Validate key             |
+| `/api/v1/settings/ai-keys/providers`      | GET    | `ai.chat` | Get configured providers |
 
 **Add External AI Key:**
+
 ```json
 {
   "provider": "openai",
@@ -507,27 +526,27 @@ Content-Type: application/json
 
 ### Feature Flags
 
-| Endpoint | Method | Role | Description |
-|----------|--------|------|-------------|
-| `/api/v1/features` | GET | Any | List all flags |
-| `/api/v1/features/:flagName` | GET | Any | Get single flag |
-| `/api/v1/features/:flagName/check` | POST | Any | Check if enabled for user |
-| `/api/v1/features` | POST | Admin | Create flag |
-| `/api/v1/features/:flagName` | PUT | Admin | Update flag |
-| `/api/v1/features/:flagName` | DELETE | Admin | Delete flag |
-| `/api/v1/features/:flagName/rollout` | POST | Admin | Set rollout percentage |
+| Endpoint                             | Method | Role  | Description               |
+| ------------------------------------ | ------ | ----- | ------------------------- |
+| `/api/v1/features`                   | GET    | Any   | List all flags            |
+| `/api/v1/features/:flagName`         | GET    | Any   | Get single flag           |
+| `/api/v1/features/:flagName/check`   | POST   | Any   | Check if enabled for user |
+| `/api/v1/features`                   | POST   | Admin | Create flag               |
+| `/api/v1/features/:flagName`         | PUT    | Admin | Update flag               |
+| `/api/v1/features/:flagName`         | DELETE | Admin | Delete flag               |
+| `/api/v1/features/:flagName/rollout` | POST   | Admin | Set rollout percentage    |
 
 ---
 
 ### Admin: Access Requests
 
-| Endpoint | Method | Scope | Description |
-|----------|--------|-------|-------------|
-| `/api/v1/admin/access-requests` | GET | `admin` | List requests |
-| `/api/v1/admin/access-requests/stats` | GET | `admin` | Get statistics |
-| `/api/v1/admin/access-requests/:id` | GET | `admin` | Get single request |
-| `/api/v1/admin/access-requests/:id/approve` | POST | `admin` | Approve request |
-| `/api/v1/admin/access-requests/:id/reject` | POST | `admin` | Reject request |
+| Endpoint                                    | Method | Scope   | Description        |
+| ------------------------------------------- | ------ | ------- | ------------------ |
+| `/api/v1/admin/access-requests`             | GET    | `admin` | List requests      |
+| `/api/v1/admin/access-requests/stats`       | GET    | `admin` | Get statistics     |
+| `/api/v1/admin/access-requests/:id`         | GET    | `admin` | Get single request |
+| `/api/v1/admin/access-requests/:id/approve` | POST   | `admin` | Approve request    |
+| `/api/v1/admin/access-requests/:id/reject`  | POST   | `admin` | Reject request     |
 
 ---
 
@@ -537,20 +556,20 @@ The AI Orchestrator (Container 444) provides AI chat, agent routing, and RAG cap
 
 ### Core Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/health` | GET | Health check |
-| `/api/v1/chat` | POST | Chat (non-streaming) |
-| `/api/v1/chat/stream` | POST | Chat (SSE streaming) |
-| `/api/v1/command` | POST | Direct command execution |
-| `/api/v1/embed` | POST | Generate embeddings |
-| `/api/v1/agents` | GET | List available agents |
-| `/api/v1/agents/:agent_name` | POST | Invoke specific agent |
-| `/api/v1/context/:session_id` | GET | Get conversation context |
-| `/api/v1/context/:session_id` | DELETE | Clear context |
-| `/api/v1/index` | POST | Index document for RAG |
-| `/api/v1/index/:doc_id` | DELETE | Delete indexed document |
-| `/api/v1/search` | POST | Search documents |
+| Endpoint                      | Method | Description              |
+| ----------------------------- | ------ | ------------------------ |
+| `/api/v1/health`              | GET    | Health check             |
+| `/api/v1/chat`                | POST   | Chat (non-streaming)     |
+| `/api/v1/chat/stream`         | POST   | Chat (SSE streaming)     |
+| `/api/v1/command`             | POST   | Direct command execution |
+| `/api/v1/embed`               | POST   | Generate embeddings      |
+| `/api/v1/agents`              | GET    | List available agents    |
+| `/api/v1/agents/:agent_name`  | POST   | Invoke specific agent    |
+| `/api/v1/context/:session_id` | GET    | Get conversation context |
+| `/api/v1/context/:session_id` | DELETE | Clear context            |
+| `/api/v1/index`               | POST   | Index document for RAG   |
+| `/api/v1/index/:doc_id`       | DELETE | Delete indexed document  |
+| `/api/v1/search`              | POST   | Search documents         |
 
 ---
 
@@ -561,6 +580,7 @@ The AI Orchestrator (Container 444) provides AI chat, agent routing, and RAG cap
 Process a chat message with automatic agent routing.
 
 **Request:**
+
 ```json
 {
   "message": "Write a Python function to calculate fibonacci",
@@ -579,6 +599,7 @@ Process a chat message with automatic agent routing.
 ```
 
 **Response:**
+
 ```json
 {
   "message": "Here's a Python function...",
@@ -612,6 +633,7 @@ Process a chat message with automatic agent routing.
 Real-time streaming using Server-Sent Events.
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/chat/stream \
   -H "Content-Type: application/json" \
@@ -620,6 +642,7 @@ curl -X POST http://localhost:8080/api/v1/chat/stream \
 ```
 
 **SSE Events:**
+
 ```
 event: start
 data: {"session_id":"sess_123","agent":"chat","ai_source":"local"}
@@ -646,6 +669,7 @@ data: {"session_id":"sess_123","total_length":500,"ai_source":"local"}
 Execute a command on a specific agent without automatic routing.
 
 **Request:**
+
 ```json
 {
   "command": "list /home/user",
@@ -659,6 +683,7 @@ Execute a command on a specific agent without automatic routing.
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -678,6 +703,7 @@ Execute a command on a specific agent without automatic routing.
 Generate vector embeddings for text.
 
 **Request:**
+
 ```json
 {
   "texts": ["Hello world", "Another text"],
@@ -686,6 +712,7 @@ Generate vector embeddings for text.
 ```
 
 **Response:**
+
 ```json
 {
   "embeddings": [
@@ -706,6 +733,7 @@ Generate vector embeddings for text.
 Index a document for retrieval-augmented generation.
 
 **Request:**
+
 ```json
 {
   "doc_id": "doc_123",
@@ -718,6 +746,7 @@ Index a document for retrieval-augmented generation.
 ```
 
 **Response:**
+
 ```json
 {
   "doc_id": "doc_123",
@@ -735,6 +764,7 @@ Index a document for retrieval-augmented generation.
 Search indexed documents.
 
 **Request:**
+
 ```json
 {
   "query": "How does authentication work?",
@@ -744,6 +774,7 @@ Search indexed documents.
 ```
 
 **Response:**
+
 ```json
 {
   "query": "How does authentication work?",
@@ -767,13 +798,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 1. Chat Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `chat` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                        |
+| --------------- | ---------------------------- |
+| **Type**        | `chat`                       |
+| **Model**       | `llama3.2:8b`                |
 | **Description** | General conversation and Q&A |
 
 **Capabilities:**
+
 - Answer general knowledge questions
 - Explain concepts and topics
 - Provide recommendations
@@ -783,13 +815,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 2. Code Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `code` |
-| **Model** | `codellama:7b` |
+| Property        | Value                              |
+| --------------- | ---------------------------------- |
+| **Type**        | `code`                             |
+| **Model**       | `codellama:7b`                     |
 | **Description** | Code generation, review, debugging |
 
 **Capabilities:**
+
 - Generate code in multiple languages
 - Review and improve code
 - Debug and fix issues
@@ -802,13 +835,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 3. File Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `file` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                      |
+| --------------- | -------------------------- |
+| **Type**        | `file`                     |
+| **Model**       | `llama3.2:8b`              |
 | **Description** | File and folder operations |
 
 **Operations:**
+
 - `list` - List directory contents
 - `read` - Read file contents
 - `write` - Write to file
@@ -824,13 +858,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 4. Mail Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `mail` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                        |
+| --------------- | ---------------------------- |
+| **Type**        | `mail`                       |
+| **Model**       | `llama3.2:8b`                |
 | **Description** | Email sending and management |
 
 **Actions:**
+
 - `send` - Send email
 - `compose` - Draft email
 - `list` - List inbox
@@ -842,13 +877,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 5. Key Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `key` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                             |
+| --------------- | --------------------------------- |
+| **Type**        | `key`                             |
+| **Model**       | `llama3.2:8b`                     |
 | **Description** | API key and credential management |
 
 **Actions:**
+
 - `generate` - Create new API key
 - `list` - List all keys
 - `revoke` - Revoke key
@@ -861,13 +897,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 6. Workflow Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `workflow` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                   |
+| --------------- | ----------------------- |
+| **Type**        | `workflow`              |
+| **Model**       | `llama3.2:8b`           |
 | **Description** | n8n workflow automation |
 
 **Actions:**
+
 - `trigger` - Start workflow
 - `list` - List workflows
 - `status` - Check execution status
@@ -880,13 +917,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 7. Security Agent
 
-| Property | Value |
-|----------|-------|
-| **Type** | `security` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                         |
+| --------------- | ----------------------------- |
+| **Type**        | `security`                    |
+| **Model**       | `llama3.2:8b`                 |
 | **Description** | Permission and access control |
 
 **Actions:**
+
 - `grant` - Grant permission
 - `revoke` - Revoke permission
 - `list_permissions` - Show permissions
@@ -901,13 +939,14 @@ The AI Orchestrator includes 8 specialized agents:
 
 ### 8. Search Agent (RAG)
 
-| Property | Value |
-|----------|-------|
-| **Type** | `search` |
-| **Model** | `llama3.2:8b` |
+| Property        | Value                         |
+| --------------- | ----------------------------- |
+| **Type**        | `search`                      |
+| **Model**       | `llama3.2:8b`                 |
 | **Description** | Document search and retrieval |
 
 **Actions:**
+
 - `search` - Full-text search
 - `question` - Q&A with context
 - `index` - Index document
@@ -934,6 +973,7 @@ The system uses two-level routing:
 ### MCP Gateway (Zod Schemas)
 
 #### CommandRequest
+
 ```typescript
 {
   command: string,              // 1-32000 chars
@@ -955,6 +995,7 @@ The system uses two-level routing:
 ```
 
 #### SendMessage
+
 ```typescript
 {
   content: string,              // 1-32000 chars
@@ -966,6 +1007,7 @@ The system uses two-level routing:
 ```
 
 #### CreateApiKey
+
 ```typescript
 {
   name: string,                 // 1-100 chars
@@ -983,6 +1025,7 @@ The system uses two-level routing:
 ### AI Orchestrator (Pydantic Models)
 
 #### ChatRequest
+
 ```python
 class ChatRequest(BaseModel):
     message: str                 # 1-10000 chars
@@ -995,6 +1038,7 @@ class ChatRequest(BaseModel):
 ```
 
 #### ChatResponse
+
 ```python
 class ChatResponse(BaseModel):
     message: str
@@ -1006,6 +1050,7 @@ class ChatResponse(BaseModel):
 ```
 
 #### CommandRequest
+
 ```python
 class CommandRequest(BaseModel):
     command: str
@@ -1015,6 +1060,7 @@ class CommandRequest(BaseModel):
 ```
 
 #### AgentType (Enum)
+
 ```python
 class AgentType(str, Enum):
     CHAT = "chat"
@@ -1046,16 +1092,16 @@ class AgentType(str, Enum):
 
 ### Error Codes
 
-| Code | HTTP | Description |
-|------|------|-------------|
-| `UNAUTHORIZED` | 401 | Missing or invalid authentication |
-| `INVALID_TOKEN` | 401 | Bad JWT or API key |
-| `FORBIDDEN` | 403 | Insufficient scopes or roles |
-| `NOT_FOUND` | 404 | Resource doesn't exist |
-| `CONFLICT` | 409 | Duplicate resource |
-| `VALIDATION_ERROR` | 400 | Invalid request body |
-| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
-| `INTERNAL_ERROR` | 500 | Server error |
+| Code                  | HTTP | Description                       |
+| --------------------- | ---- | --------------------------------- |
+| `UNAUTHORIZED`        | 401  | Missing or invalid authentication |
+| `INVALID_TOKEN`       | 401  | Bad JWT or API key                |
+| `FORBIDDEN`           | 403  | Insufficient scopes or roles      |
+| `NOT_FOUND`           | 404  | Resource doesn't exist            |
+| `CONFLICT`            | 409  | Duplicate resource                |
+| `VALIDATION_ERROR`    | 400  | Invalid request body              |
+| `RATE_LIMIT_EXCEEDED` | 429  | Too many requests                 |
+| `INTERNAL_ERROR`      | 500  | Server error                      |
 
 ### AI Orchestrator Errors
 
@@ -1074,12 +1120,12 @@ class AgentType(str, Enum):
 
 ### MCP Gateway Limits
 
-| Endpoint | Limit | Window |
-|----------|-------|--------|
-| AI Command (`/mcp/command`) | 100 | per minute |
-| API Key Creation | 5 | per hour per user |
-| Forgot Key | 3 | per hour per email |
-| Access Request | 5 | per hour per IP |
+| Endpoint                    | Limit | Window             |
+| --------------------------- | ----- | ------------------ |
+| AI Command (`/mcp/command`) | 100   | per minute         |
+| API Key Creation            | 5     | per hour per user  |
+| Forgot Key                  | 3     | per hour per email |
+| Access Request              | 5     | per hour per IP    |
 
 ### Rate Limit Headers
 
@@ -1098,6 +1144,7 @@ X-RateLimit-Reset: 1705752000
 **Endpoint:** `/ws/command`
 
 **Authentication:**
+
 ```javascript
 // Connect
 const ws = new WebSocket('ws://localhost:4000/ws/command');
@@ -1110,6 +1157,7 @@ ws.send(JSON.stringify({
 ```
 
 **Client Messages:**
+
 ```javascript
 { type: 'auth', token: string }
 { type: 'subscribe', commandId: string }
@@ -1118,6 +1166,7 @@ ws.send(JSON.stringify({
 ```
 
 **Server Messages:**
+
 ```javascript
 { type: 'connected', clientId, message }
 { type: 'auth_success', userId }
@@ -1210,6 +1259,7 @@ curl http://localhost:4000/api/v1/workflows/exec_123 \
 ### Environment Variables
 
 #### MCP Gateway
+
 ```env
 DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
@@ -1219,6 +1269,7 @@ MINIO_ENDPOINT=...
 ```
 
 #### AI Orchestrator
+
 ```env
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_EMBED_MODEL=nomic-embed-text
@@ -1234,14 +1285,14 @@ DEBUG=false
 
 ## Summary
 
-| Metric | Value |
-|--------|-------|
-| **MCP Gateway Endpoints** | 45+ |
-| **AI Orchestrator Endpoints** | 12 |
-| **Total Agents** | 8 |
-| **Auth Methods** | JWT, API Key |
-| **Scopes** | 10 |
-| **Real-time** | WebSocket, SSE |
+| Metric                        | Value          |
+| ----------------------------- | -------------- |
+| **MCP Gateway Endpoints**     | 73             |
+| **AI Orchestrator Endpoints** | 12             |
+| **Total Agents**              | 8              |
+| **Auth Methods**              | JWT, API Key   |
+| **Scopes**                    | 10             |
+| **Real-time**                 | WebSocket, SSE |
 
 ---
 
